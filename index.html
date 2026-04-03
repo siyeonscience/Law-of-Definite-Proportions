@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>일정 성분비 법칙</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
+  font-family:'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif;}
+.screen{position:absolute;inset:0;display:none;flex-direction:column;}
+.screen.on{display:flex;}
+
+/* SPLASH */
+#splash{align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 40%,#1e2d4a 0%,#0d1220 100%);}
+.sp-icon{font-size:72px;animation:bob 3s ease-in-out infinite;display:block;text-align:center;margin-bottom:16px;}
+@keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
+.sp-title{font-size:clamp(17px,4vw,24px);font-weight:900;color:#fff;text-align:center;line-height:1.38;margin-bottom:6px;}
+.sp-sub{font-size:clamp(11px,2.8vw,13px);color:#7a90bb;text-align:center;margin-bottom:40px;}
+.btn-go{background:linear-gradient(135deg,#3b7de8,#1e4fbb);color:#fff;border:none;
+  padding:15px 50px;border-radius:50px;font-size:17px;font-weight:800;cursor:pointer;
+  letter-spacing:.06em;box-shadow:0 8px 28px rgba(59,125,232,.45);}
+.btn-go:active{transform:scale(.97);}
+
+/* MAIN */
+#main{background:#edf0f5;}
+.tabs{display:flex;background:#1a1f2e;flex-shrink:0;overflow-x:auto;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tb{flex:0 0 auto;padding:12px 14px 10px;font-size:12px;font-weight:700;color:#5a6e99;
+  border:none;background:none;cursor:pointer;border-bottom:3px solid transparent;
+  transition:all .2s;white-space:nowrap;}
+.tb.on{color:#fff;border-bottom-color:#3b7de8;}
+.scroll{flex:1;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-bottom:40px;}
+.card{background:#fff;border-radius:16px;margin:14px 13px 0;padding:18px 16px;box-shadow:0 2px 10px rgba(0,0,0,.07);}
+.ch{font-size:14px;font-weight:800;color:#1a2332;margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+.ch::before{content:'';width:4px;height:17px;background:#3b7de8;border-radius:2px;flex-shrink:0;}
+
+/* FORMULA */
+.frow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.flabel{font-size:13px;color:#2d3a50;font-weight:600;}
+.fi{border:2px solid #d0d8ec;border-radius:10px;padding:9px 12px;font-size:16px;
+  font-family:inherit;font-weight:700;width:90px;text-align:center;outline:none;
+  transition:border-color .2s,background .2s;background:#f8faff;}
+.fi:focus{border-color:#3b7de8;}
+.fi.ok{border-color:#22c55e;background:#f0fdf4;color:#166534;}
+.fi.no{border-color:#ef4444;background:#fef2f2;color:#991b1b;}
+.fhint{font-size:12px;color:#8899bb;margin-top:8px;line-height:1.5;}
+.ffb{font-size:12.5px;font-weight:700;margin-top:5px;min-height:18px;}
+.ffb.ok{color:#22c55e;}.ffb.no{color:#ef4444;}
+
+/* WORKSPACE */
+.ws-wrap{border:2px solid #d4dae8;border-radius:14px;overflow:hidden;background:#f5f7fb;touch-action:none;}
+.ws-wrap canvas{display:block;width:100%;touch-action:none;}
+.ws-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;}
+.ws-stat{font-size:12.5px;font-weight:700;color:#3b7de8;flex:1;min-height:18px;}
+.btn-reset{padding:6px 13px;border-radius:8px;border:1.5px solid #d4dae8;background:#f8faff;font-size:11.5px;font-weight:700;color:#7a88a8;cursor:pointer;}
+
+/* BLANKS */
+.brow{font-size:13px;color:#2d3a50;line-height:2.5;display:flex;flex-wrap:wrap;align-items:center;gap:5px;}
+.bn{border:2px solid #3b7de8;border-radius:8px;width:52px;height:36px;text-align:center;
+  font-size:15px;font-weight:700;color:#1a2332;outline:none;background:#f0f5ff;font-family:inherit;}
+.dz{border:2px dashed #3b7de8;border-radius:8px;min-width:72px;height:36px;
+  display:inline-flex;align-items:center;justify-content:center;font-size:12px;
+  font-weight:700;color:#a0aec0;background:#f8faff;transition:all .2s;cursor:default;padding:0 6px;user-select:none;}
+.dz.hov{background:#e8f0fd;border-style:solid;border-color:#2558c0;}
+.dz.correct{background:#22c55e;border-style:solid;border-color:#16a34a;color:#fff;}
+.dz.wrong{background:#ef4444;border-style:solid;border-color:#dc2626;color:#fff;}
+.tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+.tag{display:inline-flex;align-items:center;justify-content:center;border-radius:8px;
+  padding:7px 13px;font-size:12.5px;font-weight:700;color:#fff;cursor:grab;
+  user-select:none;box-shadow:0 2px 6px rgba(0,0,0,.2);touch-action:none;}
+.dz-fb{font-size:11.5px;font-weight:700;margin-top:6px;min-height:16px;color:#ef4444;}
+
+/* MOLECULE DISPLAY */
+.mol-canvas-wrap{margin-bottom:12px;border-radius:12px;border:1.5px solid #d4dae8;
+  background:#f7f9fc;overflow:hidden;touch-action:none;}
+.mol-canvas-wrap canvas{display:block;width:100%;touch-action:none;cursor:grab;}
+
+/* DUAL SCALE */
+.dual-scale{display:flex;gap:10px;margin-bottom:6px;}
+.scale-col{flex:1;display:flex;flex-direction:column;}
+.scale-instruct{font-size:11px;color:#4a6a99;font-weight:600;line-height:1.4;
+  margin-bottom:7px;padding:7px 9px;background:#eef3ff;border-radius:10px;border:1px solid #c8d8f0;}
+.dscale-wrap{background:#1a2332;border-radius:14px;padding:11px;}
+.dscale-screen{background:#0a1a0a;border:2px solid #2a4a2a;border-radius:9px;
+  padding:8px 12px;margin-bottom:8px;font-family:'Courier New',monospace;}
+.dscale-header{font-size:9px;color:#3a6a3a;text-transform:uppercase;letter-spacing:.1em;margin-bottom:2px;}
+.dscale-value{font-size:28px;font-weight:700;color:#44dd44;text-align:right;letter-spacing:.03em;line-height:1.1;}
+.dscale-unit{font-size:11px;color:#3a9a3a;text-align:right;}
+.dscale-pan{background:#2d3748;border-radius:10px;min-height:60px;padding:7px;
+  display:flex;flex-direction:column;align-items:center;gap:5px;}
+.dscale-pan-label{font-size:10px;color:#8a9ab8;font-weight:700;letter-spacing:.04em;}
+.dscale-atoms{display:flex;flex-wrap:wrap;gap:4px;justify-content:center;min-height:34px;align-items:center;}
+.dscale-pan-hint{font-size:10px;color:#5a6a88;font-style:italic;text-align:center;}
+.dscale-base{width:65%;height:7px;background:#2d3748;border-radius:0 0 4px 4px;margin:0 auto;margin-top:-1px;}
+.dscale-stand{width:7px;height:14px;background:#374151;margin:0 auto;}
+.dscale-foot{width:46%;height:6px;background:#374151;border-radius:3px;margin:0 auto;}
+.remove-hint{font-size:11px;color:#8899bb;margin-top:5px;font-style:italic;text-align:center;}
+
+/* SUMMARY */
+.sum-list{list-style:none;display:flex;flex-direction:column;gap:14px;margin-bottom:14px;}
+.sum-list li{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px;color:#2d3a50;line-height:2.2;}
+.sum-list li::before{content:'•';color:#3b7de8;font-size:18px;font-weight:900;flex-shrink:0;line-height:1;}
+.ratio-wrap{display:inline-flex;align-items:center;gap:4px;}
+.ratio-colon{font-size:15px;font-weight:700;color:#2d3a50;}
+.rfb{font-size:12.5px;font-weight:700;margin-top:6px;min-height:18px;}
+.rfb.ok{color:#22c55e;}.rfb.no{color:#ef4444;}
+.btn-check{padding:9px 22px;background:#3b7de8;color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;margin-top:10px;}
+.btn-check:active{background:#2558c0;}
+
+.panel{display:none;}.panel.on{display:block;}
+#ghost{position:fixed;pointer-events:none;z-index:9999;display:none;border-radius:50%;
+  align-items:center;justify-content:center;font-weight:800;opacity:.9;}
+</style>
+</head>
+<body>
+
+<!-- SPLASH -->
+<div class="screen on" id="splash">
+  <div style="padding:32px;text-align:center;">
+    <span class="sp-icon">⚗️</span>
+    <div class="sp-title">일정 성분비 법칙<br>원자 모형으로 설명하기</div>
+    <div class="sp-sub">원자를 직접 드래그해서 화합물을 만들어 보세요</div>
+    <button class="btn-go" id="startBtn">시 작</button>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="screen" id="main">
+  <div class="tabs" id="tabbar"></div>
+  <div class="scroll" id="scroll">
+    <div id="panels"></div>
+  </div>
+</div>
+<div id="ghost"></div>
+
+<script>
+/* ═══════════════════════════════════════════
+   ATOM DEFINITIONS
+   크기: O=38, Mg=32, Cu=44, H=22, N=34
+═══════════════════════════════════════════ */
+const A = {
+  Mg:{ sym:'Mg', name:'마그네슘', mass:24,  r:32, fill:'#92D050', dk:'#4e7a18', tc:'#1a3800' },
+  O: { sym:'O',  name:'산소',     mass:16,  r:38, fill:'#FF3333', dk:'#aa1111', tc:'#fff'    },
+  Cu:{ sym:'Cu', name:'구리',     mass:64,  r:44, fill:'#ED7D31', dk:'#a04010', tc:'#fff'    },
+  H: { sym:'H',  name:'수소',     mass:1,   r:22, fill:'#7EC8E3', dk:'#2a7fa8', tc:'#003a54' },
+  N: { sym:'N',  name:'질소',     mass:14,  r:34, fill:'#60A5FA', dk:'#1d4ed8', tc:'#fff'    },
+};
+
+/* ═══════════════════════════════════════════
+   COMPOUND CONFIGS
+   primary: 팔레트 상단 원자, secondary: 팔레트 하단 원자
+   n1: primary 공급 수, n2: secondary 공급 수
+   perMol: { primary수, secondary수 } — 분자 1개당 원자 수
+   answer: 빠진 원소 이름 (결과 정리 드래그 답)
+   leftover: 남는 원소 이름
+═══════════════════════════════════════════ */
+const CFG = [
+  { id:0, primary:'Mg', secondary:'O',  n1:2, n2:4,
+    perMol:{p:1,s:1},  // MgO: Mg1 O1
+    cname:'산화 마그네슘', formula:'MgO',
+    answer:'산소', wrong:'마그네슘',
+    tagColors:['#4a7a18','#cc2020'],
+    scLabelL:'마그네슘 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+
+  { id:1, primary:'Cu', secondary:'O',  n1:2, n2:4,
+    perMol:{p:1,s:1},  // CuO: Cu1 O1
+    cname:'산화 구리(Ⅱ)', formula:'CuO',
+    answer:'산소', wrong:'구리',
+    tagColors:['#a04010','#cc2020'],
+    scLabelL:'구리 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+
+  { id:2, primary:'H',  secondary:'O',  n1:10, n2:4,
+    perMol:{p:2,s:1},  // H2O: H2 O1
+    cname:'물', formula:'H₂O',
+    answer:'산소', wrong:'수소',
+    tagColors:['#2a7fa8','#cc2020'],
+    scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+
+  { id:3, primary:'H',  secondary:'O',  n1:10, n2:4,
+    perMol:{p:2,s:2},  // H2O2: H2 O2
+    cname:'과산화수소', formula:'H₂O₂',
+    answer:'산소', wrong:'수소',
+    tagColors:['#2a7fa8','#cc2020'],
+    scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+
+  { id:4, primary:'N',  secondary:'H',  n1:2, n2:10,
+    perMol:{p:1,s:3},  // NH3: N1 H3
+    cname:'암모니아', formula:'NH₃',
+    answer:'수소', wrong:'질소',
+    tagColors:['#1d4ed8','#2a7fa8'],
+    scLabelL:'질소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    scLabelR:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+];
+
+const BOND_RATIO = 0.94;
+const NPANELS = CFG.length;
+
+/* ═══════════ UTIL ═══════════ */
+function lighten(h,v){let n=parseInt(h.replace('#',''),16);return `rgb(${Math.min(255,(n>>16)+v)},${Math.min(255,((n>>8)&0xff)+v)},${Math.min(255,(n&0xff)+v)})`;}
+function gcd(a,b){return b?gcd(b,a%b):a;}
+function dist2(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);}
+function bonded(a,b){return dist2(a,b)<(a.r+b.r)*BOND_RATIO;}
+
+/* ═══════════ GHOST ═══════════ */
+const ghost=document.getElementById('ghost');
+function showGhost(atom,cx,cy){
+  const s=Math.round(atom.r*1.8);
+  ghost.style.cssText=`display:flex;width:${s}px;height:${s}px;left:${cx-s/2}px;top:${cy-s/2}px;`+
+    `background:${atom.fill};border-radius:50%;align-items:center;justify-content:center;`+
+    `font-size:${Math.round(atom.r*.5)}px;color:${atom.tc};font-family:'Malgun Gothic',sans-serif;`+
+    `box-shadow:0 4px 16px rgba(0,0,0,.35);`;
+  ghost.textContent=atom.sym;
+}
+function moveGhost(cx,cy){const s=parseInt(ghost.style.width);ghost.style.left=(cx-s/2)+'px';ghost.style.top=(cy-s/2)+'px';}
+function hideGhost(){ghost.style.display='none';}
+
+/* ═══════════ DRAW ═══════════ */
+function drawBall(ctx,x,y,r,atom){
+  const g=ctx.createRadialGradient(x-r*.3,y-r*.32,r*.04,x,y,r);
+  g.addColorStop(0,lighten(atom.fill,65));g.addColorStop(.5,atom.fill);g.addColorStop(1,atom.dk);
+  ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+  ctx.strokeStyle=atom.dk;ctx.lineWidth=2;ctx.stroke();
+  ctx.fillStyle=atom.tc;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.font=`800 ${Math.round(r*.52)}px "Malgun Gothic","Apple SD Gothic Neo",sans-serif`;
+  ctx.fillText(atom.sym,x,y-r*.1);
+  ctx.globalAlpha=.72;
+  ctx.font=`${Math.round(r*.32)}px "Malgun Gothic",sans-serif`;
+  ctx.fillText(atom.name,x,y+r*.43);
+  ctx.globalAlpha=1;
+}
+function drawRingAroundGroup(ctx, atoms){
+  // atoms: [{x,y,r}, ...] — 모든 원자를 감싸는 노란 타원
+  if(!atoms.length)return;
+  let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity;
+  atoms.forEach(a=>{minX=Math.min(minX,a.x-a.r);maxX=Math.max(maxX,a.x+a.r);minY=Math.min(minY,a.y-a.r);maxY=Math.max(maxY,a.y+a.r);});
+  const mx=(minX+maxX)/2, my=(minY+maxY)/2;
+  const rw=(maxX-minX)/2+8, rh=(maxY-minY)/2+8;
+  ctx.save();
+  ctx.beginPath();ctx.ellipse(mx,my,rw,rh,0,0,Math.PI*2);
+  ctx.strokeStyle='#FFD700';ctx.lineWidth=4;
+  ctx.shadowColor='#FFD700';ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════
+   FIND BONDS — perMol 비율 지원
+   (p개의 primary + s개의 secondary = 분자 1개)
+═══════════════════════════════════════ */
+function findBonds(pi){
+  const cfg=CFG[pi], s=WS[pi]; if(!s)return[];
+  const pKey=cfg.primary, sKey=cfg.secondary;
+  const pp=cfg.perMol.p, sp=cfg.perMol.s;
+
+  // 오른쪽 작업 공간에 있는 원자들
+  const Ps=s.atoms.filter(a=>a.key===pKey&&a.x>92&&!a.dragging);
+  const Ss=s.atoms.filter(a=>a.key===sKey&&a.x>92&&!a.dragging);
+
+  const bonds=[], usedP=new Set(), usedS=new Set();
+
+  // primary 원자 pp개 묶음을 기준으로 탐색
+  for(let i=0;i<=Ps.length-pp;i++){
+    // pp개의 primary가 서로 가까이 있는지 확인 (간단히 첫 번째 기준)
+    const pGroup=[];
+    if(pp===1){
+      pGroup.push(Ps[i]);
+    } else {
+      // pp>1인 경우: i번째부터 pp개가 모두 서로 BOND_RATIO 거리 이내
+      // 단순하게 팔레트 인덱스 순서로 묶음
+      const candidates=Ps.filter(a=>!usedP.has(a.id));
+      if(candidates.length<pp)break;
+      for(let k=0;k<pp;k++) pGroup.push(candidates[k]);
+    }
+
+    // sKey 원자 sp개 찾기: pGroup[0]에 가까운 순
+    const sAvail=Ss.filter(a=>!usedS.has(a.id));
+    if(sAvail.length<sp)break;
+
+    // pGroup[0]과의 거리로 정렬해서 sp개 선택
+    const sGroup=sAvail.slice().sort((a,b)=>dist2(a,pGroup[0])-dist2(b,pGroup[0])).slice(0,sp);
+
+    // 결합 조건: pGroup의 각 원자와 sGroup의 적어도 하나가 bonded이어야 함
+    const allBonded=pGroup.every(pa=>sGroup.some(sa=>bonded(pa,sa)));
+    if(!allBonded)continue;
+
+    // 이미 사용된 원자인지 확인
+    if(pGroup.some(a=>usedP.has(a.id)))continue;
+    if(sGroup.some(a=>usedS.has(a.id)))continue;
+
+    bonds.push({pGroup,sGroup});
+    pGroup.forEach(a=>usedP.add(a.id));
+    sGroup.forEach(a=>usedS.add(a.id));
+  }
+  return bonds;
+}
+
+/* ═══════════════════════════════════════
+   WORKSPACE
+═══════════════════════════════════════ */
+const WS=new Array(NPANELS).fill(null);
+let activeDragPI=-1; // 현재 드래그 중인 패널 인덱스
+
+// document 레벨 공유 핸들러 (한 번만 등록)
+document.addEventListener('mousemove',e=>{
+  if(activeDragPI<0)return;
+  const s=WS[activeDragPI];if(!s||!s.drag)return;
+  const canvas=document.getElementById(`wc${activeDragPI}`);if(!canvas)return;
+  const rc=canvas.getBoundingClientRect(),sx=canvas.width/rc.width,sy=canvas.height/rc.height;
+  s.drag.x=(e.clientX-rc.left)*sx-s.drag.ox;
+  s.drag.y=(e.clientY-rc.top)*sy-s.drag.oy;
+  drawWS(activeDragPI);
+});
+document.addEventListener('mouseup',()=>{
+  if(activeDragPI<0)return;
+  const s=WS[activeDragPI];if(!s||!s.drag)return;
+  const at=s.drag;at.dragging=false;s.drag=null;
+  at.x=Math.max(at.r,Math.min(s.W-at.r,at.x));at.y=Math.max(at.r,Math.min(s.H-at.r,at.y));
+  drawWS(activeDragPI);activeDragPI=-1;
+});
+document.addEventListener('touchmove',e=>{
+  if(activeDragPI<0)return;
+  const s=WS[activeDragPI];if(!s||!s.drag)return;
+  e.preventDefault();
+  const canvas=document.getElementById(`wc${activeDragPI}`);if(!canvas)return;
+  const rc=canvas.getBoundingClientRect(),sx=canvas.width/rc.width,sy=canvas.height/rc.height;
+  const t=e.touches[0];
+  s.drag.x=(t.clientX-rc.left)*sx-s.drag.ox;
+  s.drag.y=(t.clientY-rc.top)*sy-s.drag.oy;
+  drawWS(activeDragPI);
+},{passive:false});
+document.addEventListener('touchend',()=>{
+  if(activeDragPI<0)return;
+  const s=WS[activeDragPI];if(!s||!s.drag)return;
+  const at=s.drag;at.dragging=false;s.drag=null;
+  at.x=Math.max(at.r,Math.min(s.W-at.r,at.x));at.y=Math.max(at.r,Math.min(s.H-at.r,at.y));
+  drawWS(activeDragPI);activeDragPI=-1;
+});
+
+function calcWSH(pi){
+  const cfg=CFG[pi],a1=A[cfg.primary],a2=A[cfg.secondary];
+  let h=20;
+  for(let i=0;i<cfg.n1;i++)h+=a1.r*2+10;
+  h+=10;
+  for(let i=0;i<cfg.n2;i++)h+=a2.r*2+10;
+  return Math.max(h+20,220);
+}
+
+function initWS(pi){
+  const cfg=CFG[pi];
+  const wrap=document.getElementById(`ws${pi}`);
+  const canvas=document.getElementById(`wc${pi}`);
+  if(!wrap||!canvas)return;
+  const W=wrap.clientWidth||340, H=calcWSH(pi);
+  canvas.width=W;canvas.height=H;canvas.style.height=H+'px';
+  const a1=A[cfg.primary],a2=A[cfg.secondary],atoms=[],PAL=46;
+  let py=16;
+  for(let i=0;i<cfg.n1;i++){atoms.push({key:cfg.primary,x:PAL,y:py+a1.r,r:a1.r,id:`${pi}-${cfg.primary}-${i}`,dragging:false});py+=a1.r*2+10;}
+  py+=10;
+  for(let i=0;i<cfg.n2;i++){atoms.push({key:cfg.secondary,x:PAL,y:py+a2.r,r:a2.r,id:`${pi}-${cfg.secondary}-${i}`,dragging:false});py+=a2.r*2+10;}
+  WS[pi]={atoms,drag:null,W,H,pi};
+  bindWS(pi);drawWS(pi);
+}
+
+function drawWS(pi){
+  const s=WS[pi];if(!s)return;
+  const canvas=document.getElementById(`wc${pi}`);if(!canvas)return;
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,s.W,s.H);
+  ctx.fillStyle='rgba(59,125,232,.07)';
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(0,0,92,s.H,[0,0,12,0]);else ctx.rect(0,0,92,s.H);ctx.fill();
+  ctx.fillStyle='#7a8ebc';ctx.font='bold 9px sans-serif';ctx.textAlign='left';ctx.fillText('원자 팔레트',5,12);
+  ctx.strokeStyle='#ccd4e8';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(92,0);ctx.lineTo(92,s.H);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#c0ccde';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
+  ctx.fillText('원자를 오른쪽으로 드래그 →',96,18);
+
+  // 결합된 분자에 링 그리기
+  const bonds=findBonds(pi);
+  bonds.forEach(({pGroup,sGroup})=>{
+    const all=[...pGroup,...sGroup].map(a=>({x:a.x,y:a.y,r:a.r}));
+    drawRingAroundGroup(ctx,all);
+  });
+
+  s.atoms.forEach(at=>{if(!at.dragging)drawBall(ctx,at.x,at.y,at.r,A[at.key]);});
+  if(s.drag)drawBall(ctx,s.drag.x,s.drag.y,s.drag.r*1.06,A[s.drag.key]);
+  updateWSStatus(pi);
+  renderMolCanvas(pi);
+}
+
+function bindWS(pi){
+  const canvas=document.getElementById(`wc${pi}`);if(!canvas)return;
+  const s=WS[pi];
+
+  function getXY(clientX,clientY){
+    const rc=canvas.getBoundingClientRect(),sx=canvas.width/rc.width,sy=canvas.height/rc.height;
+    return{x:(clientX-rc.left)*sx,y:(clientY-rc.top)*sy};
+  }
+  function hit(px,py){
+    for(let i=s.atoms.length-1;i>=0;i--){
+      const at=s.atoms[i];if(at.dragging)continue;
+      if((px-at.x)**2+(py-at.y)**2<=at.r**2)return i;
+    }return -1;
+  }
+  function startDrag(clientX,clientY){
+    const{x,y}=getXY(clientX,clientY);
+    const i=hit(x,y);if(i<0)return;
+    const at=s.atoms.splice(i,1)[0];
+    at.dragging=true;at.ox=x-at.x;at.oy=y-at.y;
+    s.drag=at;s.atoms.push(at);
+    activeDragPI=pi;
+    drawWS(pi);
+  }
+
+  canvas.addEventListener('mousedown',e=>startDrag(e.clientX,e.clientY));
+  canvas.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    const t=e.touches[0];startDrag(t.clientX,t.clientY);
+  },{passive:false});
+}
+
+function updateWSStatus(pi){
+  const el=document.getElementById(`wst${pi}`);if(!el)return;
+  const bonds=findBonds(pi),mol=bonds.length,cfg=CFG[pi],s=WS[pi];if(!s)return;
+  const usedP=new Set(bonds.flatMap(b=>b.pGroup.map(a=>a.id)));
+  const usedS=new Set(bonds.flatMap(b=>b.sGroup.map(a=>a.id)));
+  const fP=s.atoms.filter(a=>a.key===cfg.primary&&a.x>92&&!usedP.has(a.id)).length;
+  const fS=s.atoms.filter(a=>a.key===cfg.secondary&&a.x>92&&!usedS.has(a.id)).length;
+  if(mol>0){
+    let ex='';if(fP>0)ex+=` / ${A[cfg.primary].name} ${fP}개 남음`;if(fS>0)ex+=` / ${A[cfg.secondary].name} ${fS}개 남음`;
+    el.textContent=`✅ ${cfg.cname} ${mol}개 완성!${ex}`;
+  } else {
+    el.textContent=s.atoms.some(a=>a.x>92)?'원자를 서로 끝이 살짝 닿도록 붙여보세요':'팔레트에서 원자를 드래그하세요';
+  }
+}
+
+function resetWS(pi){
+  SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
+}
+
+/* ═══════════════════════════════════════
+   MOLECULE CANVAS
+═══════════════════════════════════════ */
+const MC=new Array(NPANELS).fill(null).map(()=>({mols:[],cfg:null}));
+const MC_BOUND=new Array(NPANELS).fill(false);
+
+function renderMolCanvas(pi){
+  const canvas=document.getElementById(`mc${pi}`);if(!canvas)return;
+  const cfg=CFG[pi];
+  const bonds=findBonds(pi);
+  const mol=bonds.length;
+  const ra=A[cfg.primary].r, rb=A[cfg.secondary].r;
+  const pp=cfg.perMol.p, sp=cfg.perMol.s;
+
+  // 분자 1개의 시각적 너비/높이 계산
+  // primary 원자들을 위로 쌓고 secondary는 오른쪽에
+  const TOUCH=0.82;
+  const hGap=(ra+rb)*TOUCH; // primary ↔ secondary 중심 거리
+  const vGap=(ra*2)*0.85;   // primary들 사이 세로 거리
+  const molH=Math.max(ra*(2*pp-1)+vGap*(pp-1), rb*2)+20;
+  const molW=ra+hGap+rb+10;
+  const GAP=24;
+  const COLS=Math.max(1,Math.min(mol,3));
+  const ROWS=mol>0?Math.ceil(mol/COLS):1;
+
+  const wrap=canvas.parentElement;
+  let canW=wrap?wrap.clientWidth:0;
+  if(!canW){const sc=document.getElementById('scroll');canW=sc?sc.clientWidth-26:340;}
+  if(canW<80)canW=340;
+  const canH=mol===0?60:ROWS*(molH+GAP)+14;
+
+  canvas.width=canW;canvas.height=canH;canvas.style.height=canH+'px';
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canW,canH);
+
+  if(mol===0){
+    ctx.fillStyle='#aab0c0';ctx.font='12px "Malgun Gothic",sans-serif';
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('위에서 원자를 서로 붙이면 여기에 화합물이 표시됩니다.',canW/2,canH/2);
+    MC[pi]={mols:[],cfg};return;
+  }
+
+  // 각 분자의 원자 위치 계산
+  const molDefs=[];
+  bonds.forEach((_,i)=>{
+    const col=i%COLS, row=Math.floor(i/COLS);
+    const totalW=COLS*molW+(COLS-1)*GAP;
+    const startX=Math.max(ra,(canW-totalW)/2);
+    const ox=startX+col*(molW+GAP); // 분자 시작 x
+    const oy=row*(molH+GAP)+molH/2+7;
+
+    const pAtoms=[], sAtoms=[];
+    // primary 원자들: 세로로 배치
+    for(let k=0;k<pp;k++){
+      const ay=oy+(k-(pp-1)/2)*vGap;
+      pAtoms.push({x:ox+ra, y:ay, r:ra, key:cfg.primary});
+    }
+    // secondary 원자들: primary 무리 오른쪽에 세로 배치
+    const sVgap=(rb*2)*0.85;
+    for(let k=0;k<sp;k++){
+      const by=oy+(k-(sp-1)/2)*sVgap;
+      sAtoms.push({x:ox+ra+hGap, y:by, r:rb, key:cfg.secondary});
+    }
+    molDefs.push({pAtoms,sAtoms});
+  });
+
+  // 1. ring
+  molDefs.forEach(({pAtoms,sAtoms})=>drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]));
+  // 2. secondary (O/H) 먼저
+  molDefs.forEach(({sAtoms})=>sAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
+  // 3. primary 위에
+  molDefs.forEach(({pAtoms})=>pAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
+
+  MC[pi]={mols:molDefs,cfg};
+  if(!MC_BOUND[pi]){MC_BOUND[pi]=true;bindMolCanvas(pi);}
+}
+
+function bindMolCanvas(pi){
+  const canvas=document.getElementById(`mc${pi}`);if(!canvas)return;
+  function hitAtom(clientX,clientY){
+    const mc=MC[pi];if(!mc||!mc.mols.length)return null;
+    const rc=canvas.getBoundingClientRect();
+    const sx=canvas.width/rc.width,sy=canvas.height/rc.height;
+    const x=(clientX-rc.left)*sx,y=(clientY-rc.top)*sy;
+    for(const{pAtoms,sAtoms} of mc.mols){
+      for(const a of pAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'L'};
+      for(const a of sAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'R'};
+    }
+    return null;
+  }
+  function startDrag(e){
+    e.preventDefault();
+    const src=e.touches?e.touches[0]:e;
+    const hit=hitAtom(src.clientX,src.clientY);if(!hit)return;
+    showGhost(A[hit.key],src.clientX,src.clientY);
+    function move(ev){const t=ev.touches?ev.touches[0]:ev;moveGhost(t.clientX,t.clientY);}
+    function up(ev){
+      hideGhost();
+      const t=ev.changedTouches?ev.changedTouches[0]:ev;
+      const panEl=document.getElementById(`sp${pi}${hit.side}`);
+      if(panEl){
+        const rc=panEl.getBoundingClientRect();
+        const PAD=24; // 터치용 히트박스 여유
+        if(t.clientX>=rc.left-PAD&&t.clientX<=rc.right+PAD&&t.clientY>=rc.top-PAD&&t.clientY<=rc.bottom+PAD){
+          SC[pi][hit.side].push({key:hit.key,id:`sc${Date.now()}`});
+          updateScale(pi,hit.side);
+        }
+      }
+      document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
+      document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);
+    }
+    document.addEventListener('mousemove',move);document.addEventListener('mouseup',up);
+    document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+  }
+  canvas.addEventListener('mousedown',startDrag);
+  canvas.addEventListener('touchstart',startDrag,{passive:false});
+}
+
+/* ═══════════════════════════════════════
+   SCALE
+═══════════════════════════════════════ */
+const SC=new Array(NPANELS).fill(null).map(()=>({L:[],R:[]}));
+
+function updateScale(pi,side){
+  const panEl=document.getElementById(`sa${pi}${side}`);
+  const valEl=document.getElementById(`sv${pi}${side}`);
+  if(!panEl||!valEl)return;
+  const atoms=SC[pi][side]||[];
+  valEl.textContent=atoms.reduce((s,a)=>s+A[a.key].mass,0).toFixed(1);
+  panEl.innerHTML='';
+  if(!atoms.length){
+    const h=document.createElement('span');h.className='dscale-pan-hint';h.textContent='여기로 드래그';panEl.appendChild(h);return;
+  }
+  atoms.forEach((sa,idx)=>{
+    const atom=A[sa.key],sz=Math.round(atom.r*.78);
+    const d=document.createElement('div');
+    d.style.cssText=`width:${sz*2}px;height:${sz*2}px;border-radius:50%;flex-shrink:0;`+
+      `background:radial-gradient(circle at 35% 30%,${lighten(atom.fill,55)},${atom.fill} 55%,${atom.dk});`+
+      `display:flex;align-items:center;justify-content:center;border:1.5px solid ${atom.dk};cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.3);`;
+    const t=document.createElement('span');
+    t.style.cssText=`color:${atom.tc};font-size:${Math.round(sz*.52)}px;font-weight:800;font-family:'Malgun Gothic',sans-serif;`;
+    t.textContent=atom.sym;d.appendChild(t);
+    d.addEventListener('click',()=>{SC[pi][side].splice(idx,1);updateScale(pi,side);});
+    d.addEventListener('touchend',e=>{e.preventDefault();SC[pi][side].splice(idx,1);updateScale(pi,side);});
+    panEl.appendChild(d);
+  });
+}
+
+/* ═══════════════════════════════════════
+   FORMULA QUIZ
+═══════════════════════════════════════ */
+function bindQuiz(pi){
+  const inp=document.getElementById(`qi${pi}`),fb=document.getElementById(`qf${pi}`);
+  if(!inp)return;
+  const ans=CFG[pi].formula.replace('₂','2').replace('₃','3'); // 입력은 ASCII
+  inp.addEventListener('input',()=>{
+    const v=inp.value.trim();
+    if(!v){inp.className='fi';fb.textContent='';return;}
+    // 정답 비교: 첨자 무시
+    const norm=s=>s.replace(/[₀-₉]/g,c=>String(c.codePointAt(0)-8320));
+    if(norm(v)===norm(CFG[pi].formula)||v===CFG[pi].formula){
+      inp.className='fi ok';fb.className='ffb ok';fb.textContent='✅ 정답입니다!';
+    } else {
+      inp.className='fi no';fb.className='ffb no';fb.textContent='❌ 다시 확인해보세요.';
+    }
+  });
+}
+
+/* ═══════════════════════════════════════
+   DRAG TAG
+═══════════════════════════════════════ */
+function bindTag(pi,tagId,label){
+  const tag=document.getElementById(tagId);
+  const dz=document.getElementById(`dz${pi}`);
+  const fb=document.getElementById(`dzfb${pi}`);
+  if(!tag||!dz)return;
+  const answer=dz.dataset.answer;
+
+  function doDropOnDZ(val,targetDZ,targetFB){
+    if(val===targetDZ.dataset.answer){
+      targetDZ.textContent=val;targetDZ.className='dz correct';
+      targetDZ.dataset.currentVal=val;if(targetFB)targetFB.textContent='';
+    } else {
+      targetDZ.className='dz wrong';targetDZ.textContent='원소 이름';
+      if(targetFB)targetFB.textContent='⚠️ 원자 모형을 다시 살펴보세요.';
+      setTimeout(()=>{
+        const cur=targetDZ.dataset.currentVal||'';
+        targetDZ.textContent=cur||'원소 이름';
+        targetDZ.className=cur?'dz correct':'dz';
+        if(targetFB&&!cur)targetFB.textContent='';
+      },1500);
+    }
+  }
+
+  tag.setAttribute('draggable','true');
+  tag.addEventListener('dragstart',e=>e.dataTransfer.setData('text',label));
+  dz.addEventListener('dragover',e=>{e.preventDefault();dz.classList.add('hov');});
+  dz.addEventListener('dragleave',()=>dz.classList.remove('hov'));
+  dz.addEventListener('drop',e=>{e.preventDefault();dz.classList.remove('hov');doDropOnDZ(e.dataTransfer.getData('text'),dz,fb);});
+
+  tag.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    const rc=tag.getBoundingClientRect();
+    showGhost({fill:tag.style.background||'#3b7de8',tc:'#fff',r:18,sym:label.slice(0,2)},rc.left+rc.width/2,rc.top+rc.height/2);
+    function move(ev){ev.preventDefault();moveGhost(ev.touches[0].clientX,ev.touches[0].clientY);}
+    function up(ev){
+      hideGhost();
+      const t=ev.changedTouches[0];
+      const els=document.elementsFromPoint(t.clientX,t.clientY);
+      const targetEl=els.find(el=>el.classList.contains('dz'));
+      if(targetEl){
+        const tfb=document.getElementById(`dzfb${targetEl.id.replace('dz','')}`) ;
+        doDropOnDZ(label,targetEl,tfb);
+      }
+      document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);
+    }
+    document.addEventListener('touchmove',move,{passive:false});document.addEventListener('touchend',up);
+  },{passive:false});
+}
+
+/* ═══════════════════════════════════════
+   SUMMARY CHECK
+═══════════════════════════════════════ */
+function checkAll(pi){
+  const cfg=CFG[pi];
+  const fb=document.getElementById(`rf${pi}`);
+  const bonds=findBonds(pi);
+  const mol=bonds.length;
+  if(mol===0){fb.className='rfb no';fb.textContent='⚠️ 위에서 화합물을 먼저 만들어 주세요!';return;}
+
+  const m1=A[cfg.primary].mass, m2=A[cfg.secondary].mass;
+  const pp=cfg.perMol.p, sp=cfg.perMol.s;
+  const totalM1=mol*pp*m1, totalM2=mol*sp*m2;
+  const totalN1=mol*pp, totalN2=mol*sp;
+  const totM=totalM1+totalM2;
+  const g=gcd(totalM1,totalM2),rr1=totalM1/g,rr2=totalM2/g;
+
+  const ma=parseInt(document.getElementById(`s${pi}ma`)?.value)||0;
+  const oa=parseInt(document.getElementById(`s${pi}oa`)?.value)||0;
+  const mc2=parseInt(document.getElementById(`s${pi}mc`)?.value)||0;
+  const oc=parseInt(document.getElementById(`s${pi}oc`)?.value)||0;
+  const ra=parseInt(document.getElementById(`r${pi}a`)?.value)||0;
+  const rb=parseInt(document.getElementById(`r${pi}b`)?.value)||0;
+
+  const massOk=ma===totalM1&&oa===totalM2;
+  const countOk=mc2===totalN1&&oc===totalN2;
+  const ratioOk=ra>0&&rb>0&&ra*rr2===rb*rr1;
+
+  let msgs=[];
+  if(!massOk) msgs.push(`질량: ${A[cfg.primary].name} ${totalM1}g, ${A[cfg.secondary].name} ${totalM2}g`);
+  if(!countOk)msgs.push(`개수: ${A[cfg.primary].name} ${totalN1}개, ${A[cfg.secondary].name} ${totalN2}개`);
+  if(!ratioOk)msgs.push(`질량비: ${rr1} : ${rr2}`);
+
+  if(!msgs.length){fb.className='rfb ok';fb.textContent=`✅ 모두 정답! 질량비 = ${rr1} : ${rr2}`;}
+  else{fb.className='rfb no';fb.textContent='❌ 틀린 항목: '+msgs.join(' / ');}
+}
+
+/* ═══════════════════════════════════════
+   DYNAMIC PANEL BUILDER
+═══════════════════════════════════════ */
+function buildPanels(){
+  const tabbar=document.getElementById('tabbar');
+  const container=document.getElementById('panels');
+  tabbar.innerHTML='';container.innerHTML='';
+
+  CFG.forEach((cfg,pi)=>{
+    // Tab button
+    const tb=document.createElement('button');
+    tb.className='tb'+(pi===0?' on':'');
+    tb.id=`tb${pi}`;
+    tb.textContent=`${pi+1}. ${cfg.cname}`;
+    tb.addEventListener('click',()=>switchTab(pi));
+    tabbar.appendChild(tb);
+
+    const pn1=A[cfg.primary].name, pn2=A[cfg.secondary].name;
+
+    // Panel
+    const panel=document.createElement('div');
+    panel.className='panel'+(pi===0?' on':'');
+    panel.id=`p${pi}`;
+    panel.innerHTML=`
+      <!-- 화학식 -->
+      <div class="card">
+        <div class="ch">${cfg.cname}의 화학식</div>
+        <div class="frow">
+          <span class="flabel">${cfg.cname}의 화학식을 적어보세요.</span>
+          <input class="fi" id="qi${pi}" maxlength="8" autocomplete="off" autocorrect="off" spellcheck="false" placeholder="?">
+        </div>
+        <div class="ffb" id="qf${pi}"></div>
+        <div class="fhint">힌트: ${A[cfg.primary].name}의 원소기호는 ${cfg.primary}, ${A[cfg.secondary].name}의 원소기호는 ${cfg.secondary}입니다.</div>
+      </div>
+
+      <!-- 모형 만들기 -->
+      <div class="card">
+        <div class="ch">${cfg.cname}의 모형을 만들어 보자.</div>
+        <div style="font-size:12px;color:#7a88a8;margin-bottom:9px;">왼쪽 팔레트에서 원자를 드래그해 오른쪽 공간에 놓으세요.</div>
+        <div class="ws-wrap" id="ws${pi}"><canvas id="wc${pi}"></canvas></div>
+        <div class="ws-footer">
+          <div class="ws-stat" id="wst${pi}">원자를 드래그하여 서로 붙여보세요</div>
+          <button class="btn-reset" onclick="resetWS(${pi})">↺ 초기화</button>
+        </div>
+      </div>
+
+      <!-- 결과 정리 -->
+      <div class="card">
+        <div class="ch">결과 정리</div>
+        <div class="brow">
+          <span>${cfg.cname}을(를)</span>
+          <input class="bn" id="b${pi}a" type="text" inputmode="numeric" placeholder="?">
+          <span>개 만들 수 있고,</span>
+          <div class="dz" id="dz${pi}" data-answer="${cfg.answer}">원소 이름</div>
+          <span>가</span>
+          <input class="bn" id="b${pi}b" type="text" inputmode="numeric" placeholder="?">
+          <span>개 남는다.</span>
+        </div>
+        <div class="dz-fb" id="dzfb${pi}"></div>
+        <div class="tags">
+          <span class="tag" id="tg${pi}a" style="background:${cfg.tagColors[0]};">${pn1}</span>
+          <span class="tag" id="tg${pi}b" style="background:${cfg.tagColors[1]};">${pn2}</span>
+        </div>
+        <div style="font-size:11px;color:#b0bcc8;margin-top:6px;">위의 태그를 빈칸으로 드래그하세요</div>
+      </div>
+
+      <!-- 저울 -->
+      <div class="card">
+        <div class="ch">저울로 질량 비교하기</div>
+        <div style="font-size:12px;font-weight:700;color:#4a5a78;margin-bottom:6px;">📦 만들어진 화합물 — 원자를 드래그하여 저울에 올리세요</div>
+        <div class="mol-canvas-wrap" id="mw${pi}"><canvas id="mc${pi}" style="display:block;width:100%;touch-action:none;cursor:grab;"></canvas></div>
+        <div class="dual-scale">
+          <div class="scale-col">
+            <div class="scale-instruct">${cfg.scLabelL}</div>
+            <div class="dscale-wrap">
+              <div class="dscale-screen">
+                <div class="dscale-header">Electronic Scale</div>
+                <div class="dscale-value" id="sv${pi}L">0.0</div>
+                <div class="dscale-unit">g</div>
+              </div>
+              <div class="dscale-pan" id="sp${pi}L">
+                <div class="dscale-pan-label">저울 접시</div>
+                <div class="dscale-atoms" id="sa${pi}L"><span class="dscale-pan-hint">여기로 드래그</span></div>
+              </div>
+              <div class="dscale-base"></div><div class="dscale-stand"></div><div class="dscale-foot"></div>
+            </div>
+          </div>
+          <div class="scale-col">
+            <div class="scale-instruct">${cfg.scLabelR}</div>
+            <div class="dscale-wrap">
+              <div class="dscale-screen">
+                <div class="dscale-header">Electronic Scale</div>
+                <div class="dscale-value" id="sv${pi}R">0.0</div>
+                <div class="dscale-unit">g</div>
+              </div>
+              <div class="dscale-pan" id="sp${pi}R">
+                <div class="dscale-pan-label">저울 접시</div>
+                <div class="dscale-atoms" id="sa${pi}R"><span class="dscale-pan-hint">여기로 드래그</span></div>
+              </div>
+              <div class="dscale-base"></div><div class="dscale-stand"></div><div class="dscale-foot"></div>
+            </div>
+          </div>
+        </div>
+        <div class="remove-hint">💡 저울 위 원자를 탭하면 다시 내릴 수 있어요</div>
+      </div>
+
+      <!-- 정리 -->
+      <div class="card">
+        <div class="ch">정리</div>
+        <ul class="sum-list">
+          <li>
+            <span>${pn1}의 질량은</span>
+            <input class="bn" id="s${pi}ma" type="text" inputmode="numeric" placeholder="?">
+            <span>g, ${pn2}의 질량은</span>
+            <input class="bn" id="s${pi}oa" type="text" inputmode="numeric" placeholder="?">
+            <span>g</span>
+          </li>
+          <li>
+            <span>${pn1} 원자의 개수는</span>
+            <input class="bn" id="s${pi}mc" type="text" inputmode="numeric" placeholder="?">
+            <span>개, ${pn2} 원자의 개수는</span>
+            <input class="bn" id="s${pi}oc" type="text" inputmode="numeric" placeholder="?">
+            <span>개</span>
+          </li>
+          <li>
+            <span>${cfg.cname}을(를) 이루는 ${pn1}과 ${pn2}의 질량비는</span>
+            <div class="ratio-wrap">
+              <input class="bn" id="r${pi}a" type="text" inputmode="numeric" placeholder="?">
+              <span class="ratio-colon"> : </span>
+              <input class="bn" id="r${pi}b" type="text" inputmode="numeric" placeholder="?">
+            </div>
+          </li>
+        </ul>
+        <div class="rfb" id="rf${pi}"></div>
+        <button class="btn-check" onclick="checkAll(${pi})">확인</button>
+      </div>
+    `;
+    container.appendChild(panel);
+  });
+}
+
+/* ═══════════════════════════════════════
+   TAB & BOOT
+═══════════════════════════════════════ */
+function switchTab(pi){
+  document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('on',i===pi));
+  document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('on',i===pi));
+  document.getElementById('scroll').scrollTop=0;
+  setTimeout(()=>{initWS(pi);renderMolCanvas(pi);},60);
+}
+
+document.getElementById('startBtn').addEventListener('click',()=>{
+  document.getElementById('splash').classList.remove('on');
+  document.getElementById('main').classList.add('on');
+  buildPanels();
+  setTimeout(()=>{
+    initWS(0);renderMolCanvas(0);
+    CFG.forEach((cfg,pi)=>{
+      bindQuiz(pi);
+      bindTag(pi,`tg${pi}a`,A[cfg.primary].name);
+      bindTag(pi,`tg${pi}b`,A[cfg.secondary].name);
+    });
+  },80);
+});
+
+window.addEventListener('resize',()=>{
+  CFG.forEach((_,pi)=>{if(document.getElementById(`p${pi}`)?.classList.contains('on')){initWS(pi);renderMolCanvas(pi);}});
+});
+document.getElementById('scroll').addEventListener('scroll',()=>{
+  CFG.forEach((_,pi)=>{
+    if(!document.getElementById(`p${pi}`)?.classList.contains('on'))return;
+    const c=document.getElementById(`mc${pi}`);
+    if(c?.parentElement?.clientWidth>0)renderMolCanvas(pi);
+  });
+},{passive:true});
+</script>
+</body>
+</html>
