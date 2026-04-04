@@ -187,7 +187,7 @@ const CFG = [
   { id:2, primary:'H',  secondary:'O',  n1:10, n2:4,
     perMol:{p:2,s:1},  // H2O: H2 O1
     cname:'물', formula:'H₂O',
-    answer:'산소', wrong:'수소',
+    answer:'수소', wrong:'산소',
     tagColors:['#2a7fa8','#cc2020'],
     scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
     scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
@@ -196,7 +196,7 @@ const CFG = [
   { id:3, primary:'H',  secondary:'O',  n1:10, n2:4,
     perMol:{p:2,s:2},  // H2O2: H2 O2
     cname:'과산화수소', formula:'H₂O₂',
-    answer:'산소', wrong:'수소',
+    answer:'수소', wrong:'산소',
     tagColors:['#2a7fa8','#cc2020'],
     scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
     scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
@@ -475,11 +475,12 @@ function renderMolCanvas(pi){
 
   // 분자 1개 레이아웃 계산 (실제 구조 기반)
   const layout=getMolLayout(pi);
-  const GAP=20;
+  const GAP=24;
   const COLS=Math.max(1,Math.min(mol,3));
   const ROWS=mol>0?Math.ceil(mol/COLS):1;
   const molW=layout.w, molH=layout.h;
-  const canH=mol===0?60:ROWS*(molH+GAP)+14;
+  // 충분한 여백 확보: 행 수 × (분자높이 + 간격) + 위아래 여백
+  const canH=mol===0?60:ROWS*(molH+GAP)+GAP;
 
   canvas.width=canW;canvas.height=canH;canvas.style.height=canH+'px';
   const ctx=canvas.getContext('2d');
@@ -497,9 +498,9 @@ function renderMolCanvas(pi){
     const col=i%COLS, row=Math.floor(i/COLS);
     const totalW=COLS*molW+(COLS-1)*GAP;
     const startX=Math.max(0,(canW-totalW)/2);
-    const ox=startX+col*(molW+GAP)+layout.ox; // 기준점 x
-    const oy=row*(molH+GAP)+layout.oy;        // 기준점 y
-    // layout.atoms 각각에 offset 적용
+    const ox=startX+col*(molW+GAP)+layout.ox;
+    // 각 행의 y: 위쪽 여백(GAP/2) + 행번호×(분자높이+간격) + layout.oy
+    const oy=GAP/2+row*(molH+GAP)+layout.oy;
     const pAtoms=[], sAtoms=[];
     layout.atoms.forEach(at=>{
       const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key};
