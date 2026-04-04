@@ -830,12 +830,12 @@ function checkAll(pi){
   const rb =parseInt(document.getElementById(`r${pi}b`)?.value)||0;
 
   const massOk =(ma===m1)&&(oa===m2);
-  const countOk=(mc2===totalN1)&&(oc===totalN2);
+  const countOk=(mc2===pp)&&(oc===sp);  // 분자 1개 기준
   const ratioOk=ra>0&&rb>0&&ra*rr2===rb*rr1;
 
   let msgs=[];
   if(!massOk) msgs.push(`원자 1개 질량: ${A[cfg.primary].name} ${m1}g, ${A[cfg.secondary].name} ${m2}g`);
-  if(!countOk)msgs.push(`원자 개수: ${A[cfg.primary].name} ${totalN1}개, ${A[cfg.secondary].name} ${totalN2}개`);
+  if(!countOk)msgs.push(`분자 1개당 원자 수: ${A[cfg.primary].name} ${pp}개, ${A[cfg.secondary].name} ${sp}개`);
   if(!ratioOk)msgs.push(`질량비: ${rr1} : ${rr2}`);
 
   if(!msgs.length){fb.className='rfb ok';fb.textContent=`✅ 모두 정답! 질량비 = ${rr1} : ${rr2}`;}
@@ -991,7 +991,7 @@ function buildPanels(){
             <span>g</span>
           </li>
           <li>
-            <span>${cfg.cname}을(를) 이루는 ${pn1} 원자의 개수는</span>
+            <span>${cfg.cname} 1개를 이루는 ${pn1} 원자의 개수는</span>
             <input class="bn" id="s${pi}mc" type="text" inputmode="numeric" placeholder="?">
             <span>개, ${pn2} 원자의 개수는</span>
             <input class="bn" id="s${pi}oc" type="text" inputmode="numeric" placeholder="?">
