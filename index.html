@@ -112,6 +112,17 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 .panel{display:none;}.panel.on{display:block;}
 #ghost{position:fixed;pointer-events:none;z-index:9999;display:none;border-radius:50%;
   align-items:center;justify-content:center;font-weight:800;opacity:.9;}
+
+/* MASS TABLE */
+.mass-table-note{font-size:12px;color:#4a5a78;line-height:1.6;margin-bottom:10px;font-weight:500;}
+.mass-table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px;}
+.mass-table th,.mass-table td{border:1.5px solid #d0d8ec;padding:8px 6px;text-align:center;vertical-align:middle;}
+.mass-table th{background:#eef3ff;color:#1a2332;font-weight:800;font-size:12px;}
+.mass-table th.row-header{background:#f5f7ff;color:#1a2332;text-align:left;padding-left:8px;font-weight:700;}
+.mass-table td.filled{color:#1a2332;font-weight:700;}
+.mass-table td.ratio-filled{color:#3b7de8;font-weight:800;}
+.mass-table .row-label-group{background:#f5f7ff;font-weight:800;color:#1a2332;}
+.mass-table td{color:#2d3a50;font-weight:600;}
 </style>
 </head>
 <body>
@@ -179,7 +190,8 @@ const CFG = [
     answer:'산소', wrong:'수소',
     tagColors:['#2a7fa8','#cc2020'],
     scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
-    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    hasTable:true, molName:'물 분자' },
 
   { id:3, primary:'H',  secondary:'O',  n1:10, n2:4,
     perMol:{p:2,s:2},  // H2O2: H2 O2
@@ -187,7 +199,8 @@ const CFG = [
     answer:'산소', wrong:'수소',
     tagColors:['#2a7fa8','#cc2020'],
     scLabelL:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
-    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+    scLabelR:'산소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    hasTable:true, molName:'과산화수소 분자' },
 
   { id:4, primary:'N',  secondary:'H',  n1:2, n2:10,
     perMol:{p:1,s:3},  // NH3: N1 H3
@@ -195,7 +208,8 @@ const CFG = [
     answer:'수소', wrong:'질소',
     tagColors:['#1d4ed8','#2a7fa8'],
     scLabelL:'질소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
-    scLabelR:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.' },
+    scLabelR:'수소 원자를 저울에 올려서<br>질량을 측정해 보세요.',
+    hasTable:true, molName:'암모니아 분자' },
 ];
 
 const BOND_RATIO = 0.94;
@@ -453,24 +467,18 @@ function renderMolCanvas(pi){
   const cfg=CFG[pi];
   const bonds=findBonds(pi);
   const mol=bonds.length;
-  const ra=A[cfg.primary].r, rb=A[cfg.secondary].r;
-  const pp=cfg.perMol.p, sp=cfg.perMol.s;
-
-  // 분자 1개의 시각적 너비/높이 계산
-  // primary 원자들을 위로 쌓고 secondary는 오른쪽에
-  const TOUCH=0.82;
-  const hGap=(ra+rb)*TOUCH; // primary ↔ secondary 중심 거리
-  const vGap=(ra*2)*0.85;   // primary들 사이 세로 거리
-  const molH=Math.max(ra*(2*pp-1)+vGap*(pp-1), rb*2)+20;
-  const molW=ra+hGap+rb+10;
-  const GAP=24;
-  const COLS=Math.max(1,Math.min(mol,3));
-  const ROWS=mol>0?Math.ceil(mol/COLS):1;
 
   const wrap=canvas.parentElement;
   let canW=wrap?wrap.clientWidth:0;
   if(!canW){const sc=document.getElementById('scroll');canW=sc?sc.clientWidth-26:340;}
   if(canW<80)canW=340;
+
+  // 분자 1개 레이아웃 계산 (실제 구조 기반)
+  const layout=getMolLayout(pi);
+  const GAP=20;
+  const COLS=Math.max(1,Math.min(mol,3));
+  const ROWS=mol>0?Math.ceil(mol/COLS):1;
+  const molW=layout.w, molH=layout.h;
   const canH=mol===0?60:ROWS*(molH+GAP)+14;
 
   canvas.width=canW;canvas.height=canH;canvas.style.height=canH+'px';
@@ -484,39 +492,118 @@ function renderMolCanvas(pi){
     MC[pi]={mols:[],cfg};return;
   }
 
-  // 각 분자의 원자 위치 계산
   const molDefs=[];
   bonds.forEach((_,i)=>{
     const col=i%COLS, row=Math.floor(i/COLS);
     const totalW=COLS*molW+(COLS-1)*GAP;
-    const startX=Math.max(ra,(canW-totalW)/2);
-    const ox=startX+col*(molW+GAP); // 분자 시작 x
-    const oy=row*(molH+GAP)+molH/2+7;
-
+    const startX=Math.max(0,(canW-totalW)/2);
+    const ox=startX+col*(molW+GAP)+layout.ox; // 기준점 x
+    const oy=row*(molH+GAP)+layout.oy;        // 기준점 y
+    // layout.atoms 각각에 offset 적용
     const pAtoms=[], sAtoms=[];
-    // primary 원자들: 세로로 배치
-    for(let k=0;k<pp;k++){
-      const ay=oy+(k-(pp-1)/2)*vGap;
-      pAtoms.push({x:ox+ra, y:ay, r:ra, key:cfg.primary});
-    }
-    // secondary 원자들: primary 무리 오른쪽에 세로 배치
-    const sVgap=(rb*2)*0.85;
-    for(let k=0;k<sp;k++){
-      const by=oy+(k-(sp-1)/2)*sVgap;
-      sAtoms.push({x:ox+ra+hGap, y:by, r:rb, key:cfg.secondary});
-    }
+    layout.atoms.forEach(at=>{
+      const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key};
+      if(at.isPrimary) pAtoms.push(entry); else sAtoms.push(entry);
+    });
     molDefs.push({pAtoms,sAtoms});
   });
 
-  // 1. ring
+  // ring → secondary → primary 순서
   molDefs.forEach(({pAtoms,sAtoms})=>drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]));
-  // 2. secondary (O/H) 먼저
   molDefs.forEach(({sAtoms})=>sAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
-  // 3. primary 위에
   molDefs.forEach(({pAtoms})=>pAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
 
   MC[pi]={mols:molDefs,cfg};
   if(!MC_BOUND[pi]){MC_BOUND[pi]=true;bindMolCanvas(pi);}
+}
+
+/* ─── 분자별 실제 구조 레이아웃 ───
+   반환값: { w, h, ox, oy, atoms:[{dx,dy,r,key,isPrimary}] }
+   ox,oy = 캔버스 내 분자 기준점 (bounding box 왼쪽 상단 기준 오프셋)
+*/
+function getMolLayout(pi){
+  const cfg=CFG[pi];
+  const ra=A[cfg.primary].r, rb=A[cfg.secondary].r;
+  const BOND=0.82; // 겹침 비율
+
+  // ── MgO, CuO: primary 왼쪽 / secondary 오른쪽 (1:1) ──
+  if(cfg.id===0||cfg.id===1){
+    const d=(ra+rb)*BOND;
+    const w=ra+d+rb+8, h=Math.max(ra,rb)*2+8;
+    return{w,h,ox:ra+4,oy:h/2,atoms:[
+      {dx:0,     dy:0, r:ra, key:cfg.primary,   isPrimary:true},
+      {dx:d,     dy:0, r:rb, key:cfg.secondary, isPrimary:false},
+    ]};
+  }
+
+  // ── H₂O: O(큰 빨강) 위 중앙, H(작은 파랑) 두 개 아래 양옆 104.5° ──
+  if(cfg.id===2){
+    const rO=A['O'].r, rH=A['H'].r;
+    const dOH=(rO+rH)*BOND;
+    const ang=104.5/2*(Math.PI/180); // 반각
+    const hx=Math.sin(ang)*dOH, hy=Math.cos(ang)*dOH;
+    // O를 원점(0,0), H들은 아래로
+    const atoms=[
+      {dx:0,   dy:0,  r:rO, key:'O', isPrimary:false},  // O 위 중앙
+      {dx:-hx, dy:hy, r:rH, key:'H', isPrimary:true},   // H 왼쪽 아래
+      {dx: hx, dy:hy, r:rH, key:'H', isPrimary:true},   // H 오른쪽 아래
+    ];
+    const xs=atoms.map(a=>a.dx), ys=atoms.map(a=>a.dy);
+    const minX=Math.min(...xs)-rH, maxX=Math.max(...xs)+rH;
+    const minY=Math.min(...ys)-rO, maxY=Math.max(...ys)+rH;
+    const w=maxX-minX+8, h=maxY-minY+8;
+    atoms.forEach(a=>{a.dx-=minX-4; a.dy-=minY-4;});
+    return{w,h,ox:0,oy:0,atoms};
+  }
+
+  // ── H₂O₂: H-O-O-H, O-O 나란히 중앙, 각 O 바깥에 H ──
+  if(cfg.id===3){
+    const rO=A['O'].r, rH=A['H'].r;
+    const dOO=(rO+rO)*BOND;
+    const dOH=(rO+rH)*BOND;
+    const hAng=100*(Math.PI/180);
+    const h1x=-dOO/2-Math.cos(hAng)*dOH, h1y= Math.sin(hAng)*dOH;
+    const h2x= dOO/2+Math.cos(hAng)*dOH, h2y=-Math.sin(hAng)*dOH;
+    const atoms=[
+      {dx:-dOO/2, dy:0,  r:rO, key:'O', isPrimary:false},
+      {dx: dOO/2, dy:0,  r:rO, key:'O', isPrimary:false},
+      {dx:h1x,    dy:h1y,r:rH, key:'H', isPrimary:true},
+      {dx:h2x,    dy:h2y,r:rH, key:'H', isPrimary:true},
+    ];
+    const xs=atoms.map(a=>a.dx), ys=atoms.map(a=>a.dy);
+    const minX=Math.min(...xs)-rH, maxX=Math.max(...xs)+rH;
+    const minY=Math.min(...ys)-rO, maxY=Math.max(...ys)+rO;
+    const w=maxX-minX+8, h=maxY-minY+8;
+    atoms.forEach(a=>{a.dx-=minX-4; a.dy-=minY-4;});
+    return{w,h,ox:0,oy:0,atoms};
+  }
+
+  // ── NH₃: N(큰 파랑) 위 중앙, H(작은 회색) 세 개 아래 삼각형 ──
+  if(cfg.id===4){
+    const rN=A['N'].r, rH=A['H'].r;
+    const dNH=(rN+rH)*BOND;
+    // H 3개: 왼쪽아래(210°), 오른쪽아래(330°), 정아래(270°)
+    const hAngles=[210,330,270].map(d=>d*(Math.PI/180));
+    const atoms=[
+      {dx:0, dy:0, r:rN, key:'N', isPrimary:true},
+      {dx:Math.cos(hAngles[0])*dNH, dy:Math.sin(hAngles[0])*dNH, r:rH, key:'H', isPrimary:false},
+      {dx:Math.cos(hAngles[1])*dNH, dy:Math.sin(hAngles[1])*dNH, r:rH, key:'H', isPrimary:false},
+      {dx:Math.cos(hAngles[2])*dNH, dy:Math.sin(hAngles[2])*dNH, r:rH, key:'H', isPrimary:false},
+    ];
+    const xs=atoms.map(a=>a.dx), ys=atoms.map(a=>a.dy);
+    const minX=Math.min(...xs)-rH, maxX=Math.max(...xs)+rH;
+    const minY=Math.min(...ys)-rN, maxY=Math.max(...ys)+rH;
+    const w=maxX-minX+8, h=maxY-minY+8;
+    atoms.forEach(a=>{a.dx-=minX-4; a.dy-=minY-4;});
+    return{w,h,ox:0,oy:0,atoms};
+  }
+
+  // fallback: 기존 가로 배치
+  const d=(ra+rb)*BOND;
+  return{w:ra+d+rb+8,h:Math.max(ra,rb)*2+8,ox:ra+4,oy:Math.max(ra,rb)+4,atoms:[
+    {dx:0,dy:0,r:ra,key:cfg.primary,isPrimary:true},
+    {dx:d,dy:0,r:rb,key:cfg.secondary,isPrimary:false},
+  ]};
 }
 
 function bindMolCanvas(pi){
@@ -573,21 +660,76 @@ function updateScale(pi,side){
   valEl.textContent=atoms.reduce((s,a)=>s+A[a.key].mass,0).toFixed(1);
   panEl.innerHTML='';
   if(!atoms.length){
-    const h=document.createElement('span');h.className='dscale-pan-hint';h.textContent='여기로 드래그';panEl.appendChild(h);return;
+    const h=document.createElement('span');h.className='dscale-pan-hint';h.textContent='여기로 드래그';panEl.appendChild(h);
+  } else {
+    atoms.forEach((sa,idx)=>{
+      const atom=A[sa.key],sz=Math.round(atom.r*.78);
+      const d=document.createElement('div');
+      d.style.cssText=`width:${sz*2}px;height:${sz*2}px;border-radius:50%;flex-shrink:0;`+
+        `background:radial-gradient(circle at 35% 30%,${lighten(atom.fill,55)},${atom.fill} 55%,${atom.dk});`+
+        `display:flex;align-items:center;justify-content:center;border:1.5px solid ${atom.dk};cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.3);`;
+      const t=document.createElement('span');
+      t.style.cssText=`color:${atom.tc};font-size:${Math.round(sz*.52)}px;font-weight:800;font-family:'Malgun Gothic',sans-serif;`;
+      t.textContent=atom.sym;d.appendChild(t);
+      d.addEventListener('click',()=>{SC[pi][side].splice(idx,1);updateScale(pi,side);});
+      d.addEventListener('touchend',e=>{e.preventDefault();SC[pi][side].splice(idx,1);updateScale(pi,side);});
+      panEl.appendChild(d);
+    });
   }
-  atoms.forEach((sa,idx)=>{
-    const atom=A[sa.key],sz=Math.round(atom.r*.78);
-    const d=document.createElement('div');
-    d.style.cssText=`width:${sz*2}px;height:${sz*2}px;border-radius:50%;flex-shrink:0;`+
-      `background:radial-gradient(circle at 35% 30%,${lighten(atom.fill,55)},${atom.fill} 55%,${atom.dk});`+
-      `display:flex;align-items:center;justify-content:center;border:1.5px solid ${atom.dk};cursor:pointer;box-shadow:0 2px 5px rgba(0,0,0,.3);`;
-    const t=document.createElement('span');
-    t.style.cssText=`color:${atom.tc};font-size:${Math.round(sz*.52)}px;font-weight:800;font-family:'Malgun Gothic',sans-serif;`;
-    t.textContent=atom.sym;d.appendChild(t);
-    d.addEventListener('click',()=>{SC[pi][side].splice(idx,1);updateScale(pi,side);});
-    d.addEventListener('touchend',e=>{e.preventDefault();SC[pi][side].splice(idx,1);updateScale(pi,side);});
-    panEl.appendChild(d);
-  });
+  // 표 업데이트 (hasTable 패널만)
+  if(CFG[pi].hasTable) updateMassTable(pi);
+}
+
+/* 질량 표 업데이트
+   저울 L(primary)과 R(secondary)에 올라간 원자 질량으로
+   분자 1~4개 열을 자동 계산해 채움 */
+function updateMassTable(pi){
+  const cfg=CFG[pi];
+  const m1=A[cfg.primary].mass;   // primary 원자 1개 질량
+  const m2=A[cfg.secondary].mass; // secondary 원자 1개 질량
+  const pp=cfg.perMol.p, sp=cfg.perMol.s; // 분자 1개당 원자 수
+
+  // 저울에 올라간 현재 질량
+  const massL=SC[pi].L.reduce((s,a)=>s+A[a.key].mass,0);
+  const massR=SC[pi].R.reduce((s,a)=>s+A[a.key].mass,0);
+
+  // 저울에 원자가 아예 없으면 표 안 채움
+  if(massL===0 && massR===0) return;
+
+  for(let n=1;n<=4;n++){
+    // 분자 n개일 때 각 원소의 이론적 질량 합계
+    const theorL=n*pp*m1;
+    const theorR=n*sp*m2;
+
+    const cellL=document.getElementById(`mt${pi}_L${n}`);
+    const cellR=document.getElementById(`mt${pi}_R${n}`);
+    const cellRatio=document.getElementById(`mt${pi}_ratio${n}`);
+
+    if(!cellL||!cellR||!cellRatio) continue;
+
+    // L칸: primary 저울에 원자가 올라와 있을 때만 채우되,
+    //       올라온 원자 수로 몇 개 분자 분인지 판단해 해당 열만 표시
+    const nL=SC[pi].L.length; // 저울에 올린 primary 원자 수
+    const nR=SC[pi].R.length; // 저울에 올린 secondary 원자 수
+
+    // 현재 저울의 원자 수가 n분자분과 일치하면 해당 열 채우기
+    if(nL>0 && nL===n*pp){
+      cellL.textContent=massL;
+      cellL.className='filled';
+    }
+    if(nR>0 && nR===n*sp){
+      cellR.textContent=massR;
+      cellR.className='filled';
+    }
+
+    // 두 칸이 모두 채워진 열이면 질량비 계산
+    const lVal=parseInt(cellL.textContent);
+    const rVal=parseInt(cellR.textContent);
+    if(cellL.textContent && cellR.textContent && !isNaN(lVal) && !isNaN(rVal) && lVal>0 && rVal>0){
+      const g=gcd(lVal,rVal);
+      cellRatio.textContent=`${lVal/g} : ${rVal/g}`;
+    }
+  }
 }
 
 /* ═══════════════════════════════════════
@@ -672,27 +814,28 @@ function checkAll(pi){
   const mol=bonds.length;
   if(mol===0){fb.className='rfb no';fb.textContent='⚠️ 위에서 화합물을 먼저 만들어 주세요!';return;}
 
-  const m1=A[cfg.primary].mass, m2=A[cfg.secondary].mass;
+  const m1=A[cfg.primary].mass,  m2=A[cfg.secondary].mass;  // 원자 1개 질량
   const pp=cfg.perMol.p, sp=cfg.perMol.s;
-  const totalM1=mol*pp*m1, totalM2=mol*sp*m2;
-  const totalN1=mol*pp, totalN2=mol*sp;
-  const totM=totalM1+totalM2;
-  const g=gcd(totalM1,totalM2),rr1=totalM1/g,rr2=totalM2/g;
+  const totalN1=mol*pp, totalN2=mol*sp;                      // 전체 원자 개수
+  const g=gcd(m1*pp, m2*sp), rr1=(m1*pp)/g, rr2=(m2*sp)/g;  // 질량비
 
-  const ma=parseInt(document.getElementById(`s${pi}ma`)?.value)||0;
-  const oa=parseInt(document.getElementById(`s${pi}oa`)?.value)||0;
+  // 정리 1번: 원자 1개 질량
+  const ma =parseInt(document.getElementById(`s${pi}ma`)?.value)||0;
+  const oa =parseInt(document.getElementById(`s${pi}oa`)?.value)||0;
+  // 정리 2번: 화합물 속 원자 개수 (완성된 분자 기준 총 개수)
   const mc2=parseInt(document.getElementById(`s${pi}mc`)?.value)||0;
-  const oc=parseInt(document.getElementById(`s${pi}oc`)?.value)||0;
-  const ra=parseInt(document.getElementById(`r${pi}a`)?.value)||0;
-  const rb=parseInt(document.getElementById(`r${pi}b`)?.value)||0;
+  const oc =parseInt(document.getElementById(`s${pi}oc`)?.value)||0;
+  // 정리 3번: 질량비
+  const ra =parseInt(document.getElementById(`r${pi}a`)?.value)||0;
+  const rb =parseInt(document.getElementById(`r${pi}b`)?.value)||0;
 
-  const massOk=ma===totalM1&&oa===totalM2;
-  const countOk=mc2===totalN1&&oc===totalN2;
+  const massOk =(ma===m1)&&(oa===m2);
+  const countOk=(mc2===totalN1)&&(oc===totalN2);
   const ratioOk=ra>0&&rb>0&&ra*rr2===rb*rr1;
 
   let msgs=[];
-  if(!massOk) msgs.push(`질량: ${A[cfg.primary].name} ${totalM1}g, ${A[cfg.secondary].name} ${totalM2}g`);
-  if(!countOk)msgs.push(`개수: ${A[cfg.primary].name} ${totalN1}개, ${A[cfg.secondary].name} ${totalN2}개`);
+  if(!massOk) msgs.push(`원자 1개 질량: ${A[cfg.primary].name} ${m1}g, ${A[cfg.secondary].name} ${m2}g`);
+  if(!countOk)msgs.push(`원자 개수: ${A[cfg.primary].name} ${totalN1}개, ${A[cfg.secondary].name} ${totalN2}개`);
   if(!ratioOk)msgs.push(`질량비: ${rr1} : ${rr2}`);
 
   if(!msgs.length){fb.className='rfb ok';fb.textContent=`✅ 모두 정답! 질량비 = ${rr1} : ${rr2}`;}
@@ -803,6 +946,37 @@ function buildPanels(){
           </div>
         </div>
         <div class="remove-hint">💡 저울 위 원자를 탭하면 다시 내릴 수 있어요</div>
+        ${cfg.hasTable ? `
+        <div style="margin-top:16px;">
+          <div class="mass-table-note">
+            📋 ${cfg.molName} 모형의 수가 1개, 2개, 3개, 4개일 때 분자를 구성하는 ${pn1}와 ${pn2}의 질량을 측정해 보세요.
+          </div>
+          <div style="overflow-x:auto;">
+            <table class="mass-table" id="mt${pi}">
+              <thead>
+                <tr>
+                  <th colspan="2">${cfg.molName} 수</th>
+                  <th>1개</th><th>2개</th><th>3개</th><th>4개</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="row-label-group" rowspan="2">구성 원자</td>
+                  <td class="row-header">${pn1} 질량 합계 (g)</td>
+                  <td id="mt${pi}_L1"></td><td id="mt${pi}_L2"></td><td id="mt${pi}_L3"></td><td id="mt${pi}_L4"></td>
+                </tr>
+                <tr>
+                  <td class="row-header">${pn2} 질량 합계 (g)</td>
+                  <td id="mt${pi}_R1"></td><td id="mt${pi}_R2"></td><td id="mt${pi}_R3"></td><td id="mt${pi}_R4"></td>
+                </tr>
+                <tr>
+                  <td colspan="2" class="row-header">질량 비 (${pn1} : ${pn2})</td>
+                  <td id="mt${pi}_ratio1" class="ratio-filled"></td><td id="mt${pi}_ratio2" class="ratio-filled"></td><td id="mt${pi}_ratio3" class="ratio-filled"></td><td id="mt${pi}_ratio4" class="ratio-filled"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>` : ''}
       </div>
 
       <!-- 정리 -->
@@ -810,14 +984,14 @@ function buildPanels(){
         <div class="ch">정리</div>
         <ul class="sum-list">
           <li>
-            <span>${pn1}의 질량은</span>
+            <span>${pn1} 원자 1개의 질량은</span>
             <input class="bn" id="s${pi}ma" type="text" inputmode="numeric" placeholder="?">
-            <span>g, ${pn2}의 질량은</span>
+            <span>g, ${pn2} 원자 1개의 질량은</span>
             <input class="bn" id="s${pi}oa" type="text" inputmode="numeric" placeholder="?">
             <span>g</span>
           </li>
           <li>
-            <span>${pn1} 원자의 개수는</span>
+            <span>${cfg.cname}을(를) 이루는 ${pn1} 원자의 개수는</span>
             <input class="bn" id="s${pi}mc" type="text" inputmode="numeric" placeholder="?">
             <span>개, ${pn2} 원자의 개수는</span>
             <input class="bn" id="s${pi}oc" type="text" inputmode="numeric" placeholder="?">
@@ -847,7 +1021,30 @@ function switchTab(pi){
   document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('on',i===pi));
   document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('on',i===pi));
   document.getElementById('scroll').scrollTop=0;
-  setTimeout(()=>{initWS(pi);renderMolCanvas(pi);},60);
+  setTimeout(()=>{
+    // 처음 방문하는 패널만 initWS, 이미 있으면 캔버스 크기만 맞추고 다시 그리기
+    if(!WS[pi]){
+      initWS(pi);
+    } else {
+      resizeWS(pi);
+    }
+    renderMolCanvas(pi);
+  },60);
+}
+
+// 원자 위치는 유지하고 캔버스 크기만 재조정
+function resizeWS(pi){
+  const s=WS[pi];if(!s)return;
+  const wrap=document.getElementById(`ws${pi}`);
+  const canvas=document.getElementById(`wc${pi}`);
+  if(!wrap||!canvas)return;
+  const W=wrap.clientWidth||s.W;
+  if(W===s.W){drawWS(pi);return;} // 크기 변화 없으면 그냥 다시 그리기
+  // 캔버스 너비 비율로 원자 x좌표 스케일
+  const ratio=W/s.W;
+  s.atoms.forEach(at=>{at.x=Math.round(at.x*ratio);});
+  s.W=W;canvas.width=W;canvas.style.width='100%';
+  drawWS(pi);
 }
 
 document.getElementById('startBtn').addEventListener('click',()=>{
@@ -865,7 +1062,11 @@ document.getElementById('startBtn').addEventListener('click',()=>{
 });
 
 window.addEventListener('resize',()=>{
-  CFG.forEach((_,pi)=>{if(document.getElementById(`p${pi}`)?.classList.contains('on')){initWS(pi);renderMolCanvas(pi);}});
+  CFG.forEach((_,pi)=>{
+    if(!document.getElementById(`p${pi}`)?.classList.contains('on'))return;
+    if(WS[pi]) resizeWS(pi); else initWS(pi);
+    renderMolCanvas(pi);
+  });
 });
 document.getElementById('scroll').addEventListener('scroll',()=>{
   CFG.forEach((_,pi)=>{
