@@ -96,7 +96,6 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 .dscale-base{width:65%;height:7px;background:#2d3748;border-radius:0 0 4px 4px;margin:0 auto;margin-top:-1px;}
 .dscale-stand{width:7px;height:14px;background:#374151;margin:0 auto;}
 .dscale-foot{width:46%;height:6px;background:#374151;border-radius:3px;margin:0 auto;}
-.remove-hint{font-size:11px;color:#8899bb;margin-top:5px;font-style:italic;text-align:center;}
 
 /* SUMMARY */
 .sum-list{list-style:none;display:flex;flex-direction:column;gap:14px;margin-bottom:14px;}
@@ -265,52 +264,63 @@ function drawRingAroundGroup(ctx, atoms){
 /* ═══════════════════════════════════════
    FIND BONDS — perMol 비율 지원
    (p개의 primary + s개의 secondary = 분자 1개)
+   원자를 놓은 순서와 상관없이, 서로 닿아 있는 원자 묶음 중
+   조건에 맞는 분자를 최대한 많이 찾음
 ═══════════════════════════════════════ */
+function combos(arr,k){
+  const out=[];
+  (function go(start,cur){
+    if(cur.length===k){out.push(cur.slice());return;}
+    for(let i=start;i<arr.length;i++){cur.push(arr[i]);go(i+1,cur);cur.pop();}
+  })(0,[]);
+  return out;
+}
+// 묶음이 분자 하나로 성립하는지: 모든 원자가 다른 원소 원자와 닿아 있고, 전체가 한 덩어리로 연결
+function isMolecule(pGroup,sGroup){
+  if(!pGroup.every(a=>sGroup.some(b=>bonded(a,b))))return false;
+  if(!sGroup.every(a=>pGroup.some(b=>bonded(a,b))))return false;
+  const all=[...pGroup,...sGroup],seen=new Set([all[0]]),stack=[all[0]];
+  while(stack.length){
+    const a=stack.pop();
+    all.forEach(b=>{if(!seen.has(b)&&bonded(a,b)){seen.add(b);stack.push(b);}});
+  }
+  return seen.size===all.length;
+}
 function findBonds(pi){
   const cfg=CFG[pi], s=WS[pi]; if(!s)return[];
-  const pKey=cfg.primary, sKey=cfg.secondary;
   const pp=cfg.perMol.p, sp=cfg.perMol.s;
 
   // 오른쪽 작업 공간에 있는 원자들
-  const Ps=s.atoms.filter(a=>a.key===pKey&&a.x>s.PW&&!a.dragging);
-  const Ss=s.atoms.filter(a=>a.key===sKey&&a.x>s.PW&&!a.dragging);
+  const Ps=s.atoms.filter(a=>a.key===cfg.primary&&a.x>s.PW&&!a.dragging).sort((a,b)=>a.id<b.id?-1:1);
+  const Ss=s.atoms.filter(a=>a.key===cfg.secondary&&a.x>s.PW&&!a.dragging).sort((a,b)=>a.id<b.id?-1:1);
 
-  const bonds=[], usedP=new Set(), usedS=new Set();
+  // 가능한 분자 후보 모두 구하기 (닿아 있는 원자끼리만 조합)
+  const cands=[];
+  combos(Ss,sp).forEach(sGroup=>{
+    const near=Ps.filter(a=>sGroup.some(b=>bonded(a,b)));
+    if(near.length<pp)return;
+    combos(near,pp).forEach(pGroup=>{if(isMolecule(pGroup,sGroup))cands.push({pGroup,sGroup});});
+  });
 
-  // primary 원자 pp개 묶음을 기준으로 탐색
-  for(let i=0;i<=Ps.length-pp;i++){
-    // pp개의 primary가 서로 가까이 있는지 확인 (간단히 첫 번째 기준)
-    const pGroup=[];
-    if(pp===1){
-      pGroup.push(Ps[i]);
-    } else {
-      // pp>1인 경우: i번째부터 pp개가 모두 서로 BOND_RATIO 거리 이내
-      // 단순하게 팔레트 인덱스 순서로 묶음
-      const candidates=Ps.filter(a=>!usedP.has(a.id));
-      if(candidates.length<pp)break;
-      for(let k=0;k<pp;k++) pGroup.push(candidates[k]);
+  // 서로 원자를 공유하지 않는 후보를 최대한 많이 고르기
+  let best=[];
+  const used=new Set();
+  (function pick(i,cur){
+    if(cur.length>best.length)best=cur.slice();
+    if(cur.length+(cands.length-i)<=best.length)return;
+    for(let j=i;j<cands.length;j++){
+      const c=cands[j],ids=[...c.pGroup,...c.sGroup].map(a=>a.id);
+      if(ids.some(id=>used.has(id)))continue;
+      ids.forEach(id=>used.add(id));cur.push(c);
+      pick(j+1,cur);
+      cur.pop();ids.forEach(id=>used.delete(id));
     }
+  })(0,[]);
 
-    // sKey 원자 sp개 찾기: pGroup[0]에 가까운 순
-    const sAvail=Ss.filter(a=>!usedS.has(a.id));
-    if(sAvail.length<sp)break;
-
-    // pGroup[0]과의 거리로 정렬해서 sp개 선택
-    const sGroup=sAvail.slice().sort((a,b)=>dist2(a,pGroup[0])-dist2(b,pGroup[0])).slice(0,sp);
-
-    // 결합 조건: pGroup의 각 원자와 sGroup의 적어도 하나가 bonded이어야 함
-    const allBonded=pGroup.every(pa=>sGroup.some(sa=>bonded(pa,sa)));
-    if(!allBonded)continue;
-
-    // 이미 사용된 원자인지 확인
-    if(pGroup.some(a=>usedP.has(a.id)))continue;
-    if(sGroup.some(a=>usedS.has(a.id)))continue;
-
-    bonds.push({pGroup,sGroup});
-    pGroup.forEach(a=>usedP.add(a.id));
-    sGroup.forEach(a=>usedS.add(a.id));
-  }
-  return bonds;
+  // 화면 위치 순(위→아래, 왼→오른)으로 정렬해 모형 순서를 안정적으로 유지
+  const cx=g=>[...g.pGroup,...g.sGroup].reduce((t,a)=>t+a.x,0);
+  const cy=g=>[...g.pGroup,...g.sGroup].reduce((t,a)=>t+a.y,0);
+  return best.sort((a,b)=>cy(a)-cy(b)||cx(a)-cx(b));
 }
 
 /* ═══════════════════════════════════════
@@ -503,16 +513,6 @@ function renderMolCanvas(pi){
   const molW=layout.w, molH=layout.h;
   // 충분한 여백 확보: 행 수 × (분자높이 + 간격) + 위아래 여백
   const canH=mol===0?60:ROWS*(molH+GAP)+GAP;
-
-  // 분자가 깨져 더 이상 존재하지 않는 원자는 저울에서도 내림 (드래그 중에는 판단 보류)
-  if(!WS[pi]?.drag){
-    const live=new Set(bonds.flatMap(b=>[...b.pGroup,...b.sGroup].map(a=>a.id)));
-    ['L','R'].forEach(side=>{
-      const before=SC[pi][side].length;
-      SC[pi][side]=SC[pi][side].filter(a=>live.has(a.wid));
-      if(SC[pi][side].length!==before)updateScale(pi,side,true);
-    });
-  }
 
   canvas.width=canW;canvas.height=canH;canvas.style.height=canH+'px';
   const ctx=canvas.getContext('2d');
@@ -993,7 +993,6 @@ function buildPanels(){
             </div>
           </div>
         </div>
-        <div class="remove-hint">💡 저울 위 원자를 탭하면 분자 모형으로 다시 돌아가요</div>
         ${cfg.hasTable ? `
         <div style="margin-top:16px;">
           <div class="mass-table-note">
