@@ -50,8 +50,8 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 .ffb.ok{color:#22c55e;}.ffb.no{color:#ef4444;}
 
 /* WORKSPACE */
-.ws-wrap{border:2px solid #d4dae8;border-radius:14px;overflow:hidden;background:#f5f7fb;touch-action:none;}
-.ws-wrap canvas{display:block;width:100%;touch-action:none;}
+.ws-wrap{border:2px solid #d4dae8;border-radius:14px;overflow:hidden;background:#f5f7fb;touch-action:pan-y;}
+.ws-wrap canvas{display:block;width:100%;touch-action:pan-y;}
 .ws-footer{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;}
 .ws-stat{font-size:12.5px;font-weight:700;color:#3b7de8;flex:1;min-height:18px;}
 .btn-reset{padding:6px 13px;border-radius:8px;border:1.5px solid #d4dae8;background:#f8faff;font-size:11.5px;font-weight:700;color:#7a88a8;cursor:pointer;}
@@ -74,8 +74,8 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 
 /* MOLECULE DISPLAY */
 .mol-canvas-wrap{margin-bottom:12px;border-radius:12px;border:1.5px solid #d4dae8;
-  background:#f7f9fc;overflow:hidden;touch-action:none;}
-.mol-canvas-wrap canvas{display:block;width:100%;touch-action:none;cursor:grab;}
+  background:#f7f9fc;overflow:hidden;touch-action:pan-y;}
+.mol-canvas-wrap canvas{display:block;width:100%;touch-action:pan-y;cursor:grab;}
 
 /* DUAL SCALE */
 .dual-scale{display:flex;gap:10px;margin-bottom:6px;}
@@ -96,7 +96,6 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 .dscale-base{width:65%;height:7px;background:#2d3748;border-radius:0 0 4px 4px;margin:0 auto;margin-top:-1px;}
 .dscale-stand{width:7px;height:14px;background:#374151;margin:0 auto;}
 .dscale-foot{width:46%;height:6px;background:#374151;border-radius:3px;margin:0 auto;}
-.remove-hint{font-size:11px;color:#8899bb;margin-top:5px;font-style:italic;text-align:center;}
 
 /* SUMMARY */
 .sum-list{list-style:none;display:flex;flex-direction:column;gap:14px;margin-bottom:14px;}
@@ -265,52 +264,63 @@ function drawRingAroundGroup(ctx, atoms){
 /* ═══════════════════════════════════════
    FIND BONDS — perMol 비율 지원
    (p개의 primary + s개의 secondary = 분자 1개)
+   원자를 놓은 순서와 상관없이, 서로 닿아 있는 원자 묶음 중
+   조건에 맞는 분자를 최대한 많이 찾음
 ═══════════════════════════════════════ */
+function combos(arr,k){
+  const out=[];
+  (function go(start,cur){
+    if(cur.length===k){out.push(cur.slice());return;}
+    for(let i=start;i<arr.length;i++){cur.push(arr[i]);go(i+1,cur);cur.pop();}
+  })(0,[]);
+  return out;
+}
+// 묶음이 분자 하나로 성립하는지: 모든 원자가 다른 원소 원자와 닿아 있고, 전체가 한 덩어리로 연결
+function isMolecule(pGroup,sGroup){
+  if(!pGroup.every(a=>sGroup.some(b=>bonded(a,b))))return false;
+  if(!sGroup.every(a=>pGroup.some(b=>bonded(a,b))))return false;
+  const all=[...pGroup,...sGroup],seen=new Set([all[0]]),stack=[all[0]];
+  while(stack.length){
+    const a=stack.pop();
+    all.forEach(b=>{if(!seen.has(b)&&bonded(a,b)){seen.add(b);stack.push(b);}});
+  }
+  return seen.size===all.length;
+}
 function findBonds(pi){
   const cfg=CFG[pi], s=WS[pi]; if(!s)return[];
-  const pKey=cfg.primary, sKey=cfg.secondary;
   const pp=cfg.perMol.p, sp=cfg.perMol.s;
 
   // 오른쪽 작업 공간에 있는 원자들
-  const Ps=s.atoms.filter(a=>a.key===pKey&&a.x>92&&!a.dragging);
-  const Ss=s.atoms.filter(a=>a.key===sKey&&a.x>92&&!a.dragging);
+  const Ps=s.atoms.filter(a=>a.key===cfg.primary&&a.x>s.PW&&!a.dragging).sort((a,b)=>a.id<b.id?-1:1);
+  const Ss=s.atoms.filter(a=>a.key===cfg.secondary&&a.x>s.PW&&!a.dragging).sort((a,b)=>a.id<b.id?-1:1);
 
-  const bonds=[], usedP=new Set(), usedS=new Set();
+  // 가능한 분자 후보 모두 구하기 (닿아 있는 원자끼리만 조합)
+  const cands=[];
+  combos(Ss,sp).forEach(sGroup=>{
+    const near=Ps.filter(a=>sGroup.some(b=>bonded(a,b)));
+    if(near.length<pp)return;
+    combos(near,pp).forEach(pGroup=>{if(isMolecule(pGroup,sGroup))cands.push({pGroup,sGroup});});
+  });
 
-  // primary 원자 pp개 묶음을 기준으로 탐색
-  for(let i=0;i<=Ps.length-pp;i++){
-    // pp개의 primary가 서로 가까이 있는지 확인 (간단히 첫 번째 기준)
-    const pGroup=[];
-    if(pp===1){
-      pGroup.push(Ps[i]);
-    } else {
-      // pp>1인 경우: i번째부터 pp개가 모두 서로 BOND_RATIO 거리 이내
-      // 단순하게 팔레트 인덱스 순서로 묶음
-      const candidates=Ps.filter(a=>!usedP.has(a.id));
-      if(candidates.length<pp)break;
-      for(let k=0;k<pp;k++) pGroup.push(candidates[k]);
+  // 서로 원자를 공유하지 않는 후보를 최대한 많이 고르기
+  let best=[];
+  const used=new Set();
+  (function pick(i,cur){
+    if(cur.length>best.length)best=cur.slice();
+    if(cur.length+(cands.length-i)<=best.length)return;
+    for(let j=i;j<cands.length;j++){
+      const c=cands[j],ids=[...c.pGroup,...c.sGroup].map(a=>a.id);
+      if(ids.some(id=>used.has(id)))continue;
+      ids.forEach(id=>used.add(id));cur.push(c);
+      pick(j+1,cur);
+      cur.pop();ids.forEach(id=>used.delete(id));
     }
+  })(0,[]);
 
-    // sKey 원자 sp개 찾기: pGroup[0]에 가까운 순
-    const sAvail=Ss.filter(a=>!usedS.has(a.id));
-    if(sAvail.length<sp)break;
-
-    // pGroup[0]과의 거리로 정렬해서 sp개 선택
-    const sGroup=sAvail.slice().sort((a,b)=>dist2(a,pGroup[0])-dist2(b,pGroup[0])).slice(0,sp);
-
-    // 결합 조건: pGroup의 각 원자와 sGroup의 적어도 하나가 bonded이어야 함
-    const allBonded=pGroup.every(pa=>sGroup.some(sa=>bonded(pa,sa)));
-    if(!allBonded)continue;
-
-    // 이미 사용된 원자인지 확인
-    if(pGroup.some(a=>usedP.has(a.id)))continue;
-    if(sGroup.some(a=>usedS.has(a.id)))continue;
-
-    bonds.push({pGroup,sGroup});
-    pGroup.forEach(a=>usedP.add(a.id));
-    sGroup.forEach(a=>usedS.add(a.id));
-  }
-  return bonds;
+  // 화면 위치 순(위→아래, 왼→오른)으로 정렬해 모형 순서를 안정적으로 유지
+  const cx=g=>[...g.pGroup,...g.sGroup].reduce((t,a)=>t+a.x,0);
+  const cy=g=>[...g.pGroup,...g.sGroup].reduce((t,a)=>t+a.y,0);
+  return best.sort((a,b)=>cy(a)-cy(b)||cx(a)-cx(b));
 }
 
 /* ═══════════════════════════════════════
@@ -355,13 +365,24 @@ document.addEventListener('touchend',()=>{
   drawWS(activeDragPI);activeDragPI=-1;
 });
 
-function calcWSH(pi){
-  const cfg=CFG[pi],a1=A[cfg.primary],a2=A[cfg.secondary];
-  let h=20;
-  for(let i=0;i<cfg.n1;i++)h+=a1.r*2+10;
-  h+=10;
-  for(let i=0;i<cfg.n2;i++)h+=a2.r*2+10;
-  return Math.max(h+20,220);
+// 팔레트를 여러 열로 배치해 캔버스 높이를 줄임 (태블릿에서 화면을 다 차지하지 않도록)
+function paletteLayout(pi,W){
+  const cfg=CFG[pi],GAP=6,TOP=20;
+  const PW=Math.round(Math.max(100,Math.min(260,W*0.36)));
+  const slots=[];let y=TOP,bottom=TOP;
+  [[cfg.primary,cfg.n1],[cfg.secondary,cfg.n2]].forEach(([key,n],gi)=>{
+    const r=A[key].r,cell=r*2+GAP;
+    const cols=Math.max(1,Math.min(n,Math.floor((PW-8)/cell)));
+    const x0=(PW-cols*cell)/2+cell/2;
+    if(gi)y+=8;
+    for(let i=0;i<n;i++){
+      const cy=y+Math.floor(i/cols)*cell+cell/2;
+      slots.push({key,x:Math.round(x0+(i%cols)*cell),y:Math.round(cy)});
+      bottom=cy+cell/2;
+    }
+    y=bottom;
+  });
+  return{PW,slots,H:Math.max(Math.ceil(bottom)+12,260)};
 }
 
 function initWS(pi){
@@ -369,14 +390,14 @@ function initWS(pi){
   const wrap=document.getElementById(`ws${pi}`);
   const canvas=document.getElementById(`wc${pi}`);
   if(!wrap||!canvas)return;
-  const W=wrap.clientWidth||340, H=calcWSH(pi);
+  const W=wrap.clientWidth||340;
+  const{PW,slots,H}=paletteLayout(pi,W);
   canvas.width=W;canvas.height=H;canvas.style.height=H+'px';
-  const a1=A[cfg.primary],a2=A[cfg.secondary],atoms=[],PAL=46;
-  let py=16;
-  for(let i=0;i<cfg.n1;i++){atoms.push({key:cfg.primary,x:PAL,y:py+a1.r,r:a1.r,id:`${pi}-${cfg.primary}-${i}`,dragging:false});py+=a1.r*2+10;}
-  py+=10;
-  for(let i=0;i<cfg.n2;i++){atoms.push({key:cfg.secondary,x:PAL,y:py+a2.r,r:a2.r,id:`${pi}-${cfg.secondary}-${i}`,dragging:false});py+=a2.r*2+10;}
-  WS[pi]={atoms,drag:null,W,H,pi};
+  const cnt={},atoms=slots.map(sl=>{
+    const i=cnt[sl.key]=(cnt[sl.key]||0)+1;
+    return{key:sl.key,x:sl.x,y:sl.y,r:A[sl.key].r,id:`${pi}-${sl.key}-${i-1}`,dragging:false};
+  });
+  WS[pi]={atoms,drag:null,W,H,PW,pi};
   bindWS(pi);drawWS(pi);
 }
 
@@ -386,12 +407,12 @@ function drawWS(pi){
   const ctx=canvas.getContext('2d');
   ctx.clearRect(0,0,s.W,s.H);
   ctx.fillStyle='rgba(59,125,232,.07)';
-  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(0,0,92,s.H,[0,0,12,0]);else ctx.rect(0,0,92,s.H);ctx.fill();
+  ctx.beginPath();if(ctx.roundRect)ctx.roundRect(0,0,s.PW,s.H,[0,0,12,0]);else ctx.rect(0,0,s.PW,s.H);ctx.fill();
   ctx.fillStyle='#7a8ebc';ctx.font='bold 9px sans-serif';ctx.textAlign='left';ctx.fillText('원자 팔레트',5,12);
   ctx.strokeStyle='#ccd4e8';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
-  ctx.beginPath();ctx.moveTo(92,0);ctx.lineTo(92,s.H);ctx.stroke();ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(s.PW,0);ctx.lineTo(s.PW,s.H);ctx.stroke();ctx.setLineDash([]);
   ctx.fillStyle='#c0ccde';ctx.font='bold 11px sans-serif';ctx.textAlign='left';
-  ctx.fillText('원자를 오른쪽으로 드래그 →',96,18);
+  ctx.fillText('원자를 오른쪽으로 드래그 →',s.PW+6,18);
 
   // 결합된 분자에 링 그리기
   const bonds=findBonds(pi);
@@ -422,18 +443,21 @@ function bindWS(pi){
   }
   function startDrag(clientX,clientY){
     const{x,y}=getXY(clientX,clientY);
-    const i=hit(x,y);if(i<0)return;
+    const i=hit(x,y);if(i<0)return false;
     const at=s.atoms.splice(i,1)[0];
     at.dragging=true;at.ox=x-at.x;at.oy=y-at.y;
     s.drag=at;s.atoms.push(at);
     activeDragPI=pi;
     drawWS(pi);
+    return true;
   }
 
   canvas.addEventListener('mousedown',e=>startDrag(e.clientX,e.clientY));
+  // 원자를 잡았을 때만 스크롤을 막고, 빈 곳을 터치하면 페이지가 스크롤되도록 함
   canvas.addEventListener('touchstart',e=>{
-    e.preventDefault();
-    const t=e.touches[0];startDrag(t.clientX,t.clientY);
+    if(e.touches.length!==1)return;
+    const t=e.touches[0];
+    if(startDrag(t.clientX,t.clientY))e.preventDefault();
   },{passive:false});
 }
 
@@ -442,18 +466,18 @@ function updateWSStatus(pi){
   const bonds=findBonds(pi),mol=bonds.length,cfg=CFG[pi],s=WS[pi];if(!s)return;
   const usedP=new Set(bonds.flatMap(b=>b.pGroup.map(a=>a.id)));
   const usedS=new Set(bonds.flatMap(b=>b.sGroup.map(a=>a.id)));
-  const fP=s.atoms.filter(a=>a.key===cfg.primary&&a.x>92&&!usedP.has(a.id)).length;
-  const fS=s.atoms.filter(a=>a.key===cfg.secondary&&a.x>92&&!usedS.has(a.id)).length;
+  const fP=s.atoms.filter(a=>a.key===cfg.primary&&a.x>s.PW&&!usedP.has(a.id)).length;
+  const fS=s.atoms.filter(a=>a.key===cfg.secondary&&a.x>s.PW&&!usedS.has(a.id)).length;
   if(mol>0){
     let ex='';if(fP>0)ex+=` / ${A[cfg.primary].name} ${fP}개 남음`;if(fS>0)ex+=` / ${A[cfg.secondary].name} ${fS}개 남음`;
     el.textContent=`✅ ${cfg.cname} ${mol}개 완성!${ex}`;
   } else {
-    el.textContent=s.atoms.some(a=>a.x>92)?'원자를 서로 끝이 살짝 닿도록 붙여보세요':'팔레트에서 원자를 드래그하세요';
+    el.textContent=s.atoms.some(a=>a.x>s.PW)?'원자를 서로 끝이 살짝 닿도록 붙여보세요':'팔레트에서 원자를 드래그하세요';
   }
 }
 
 function resetWS(pi){
-  SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
+  WS[pi]=null;MOLS[pi]=[];SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
 }
 
 /* ═══════════════════════════════════════
@@ -461,11 +485,33 @@ function resetWS(pi){
 ═══════════════════════════════════════ */
 const MC=new Array(NPANELS).fill(null).map(()=>({mols:[],cfg:null}));
 const MC_BOUND=new Array(NPANELS).fill(false);
+const MC_DRAG=new Array(NPANELS).fill(null); // 저울로 떼어내는 중인 원자 id
+// 분자 모형 목록: 작업 공간에서 한 번 완성된 분자는 이후 작업 공간과 별개로 계속 남음
+const MOLS=new Array(NPANELS).fill(null).map(()=>[]);
+
+function syncMols(pi){
+  if(!WS[pi]||WS[pi].drag)return; // 드래그 중에는 판단 보류
+  const used=new Set(MOLS[pi].flatMap(m=>[...m.pGroup,...m.sGroup].map(a=>a.id)));
+  findBonds(pi).forEach(({pGroup,sGroup})=>{
+    const ids=[...pGroup,...sGroup].map(a=>a.id);
+    if(ids.some(id=>used.has(id)))return; // 이미 모형으로 만든 원자가 섞여 있으면 새로 추가하지 않음
+    ids.forEach(id=>used.add(id));
+    MOLS[pi].push({pGroup:pGroup.map(a=>({id:a.id})),sGroup:sGroup.map(a=>({id:a.id}))});
+  });
+}
+
+// 저울에 올라갔거나 떼어내는 중인 원자 id (분자 모형에서 숨김)
+function takenIds(pi){
+  const ids=new Set([...SC[pi].L,...SC[pi].R].map(a=>a.wid));
+  if(MC_DRAG[pi])ids.add(MC_DRAG[pi]);
+  return ids;
+}
 
 function renderMolCanvas(pi){
   const canvas=document.getElementById(`mc${pi}`);if(!canvas)return;
   const cfg=CFG[pi];
-  const bonds=findBonds(pi);
+  syncMols(pi);
+  const bonds=MOLS[pi];
   const mol=bonds.length;
 
   const wrap=canvas.parentElement;
@@ -494,7 +540,7 @@ function renderMolCanvas(pi){
   }
 
   const molDefs=[];
-  bonds.forEach((_,i)=>{
+  bonds.forEach(({pGroup,sGroup},i)=>{
     const col=i%COLS, row=Math.floor(i/COLS);
     const totalW=COLS*molW+(COLS-1)*GAP;
     const startX=Math.max(0,(canW-totalW)/2);
@@ -502,15 +548,24 @@ function renderMolCanvas(pi){
     // 각 행의 y: 위쪽 여백(GAP/2) + 행번호×(분자높이+간격) + layout.oy
     const oy=GAP/2+row*(molH+GAP)+layout.oy;
     const pAtoms=[], sAtoms=[];
+    // 각 모형 원자를 작업 공간의 실제 원자(id)와 연결
     layout.atoms.forEach(at=>{
-      const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key};
+      const src=at.isPrimary?pGroup[pAtoms.length]:sGroup[sAtoms.length];
+      const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key, wid:src.id};
       if(at.isPrimary) pAtoms.push(entry); else sAtoms.push(entry);
     });
     molDefs.push({pAtoms,sAtoms});
   });
 
+  // 저울로 떼어낸 원자는 빼고 그림. 고리는 원자가 모두 남은 분자에만 표시
+  const taken=takenIds(pi);
+  molDefs.forEach(m=>{
+    m.pAtoms=m.pAtoms.filter(a=>!taken.has(a.wid));
+    m.sAtoms=m.sAtoms.filter(a=>!taken.has(a.wid));
+  });
+  const full=layout.atoms.length;
   // ring → secondary → primary 순서
-  molDefs.forEach(({pAtoms,sAtoms})=>drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]));
+  molDefs.forEach(({pAtoms,sAtoms})=>{if(pAtoms.length+sAtoms.length===full)drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]);});
   molDefs.forEach(({sAtoms})=>sAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
   molDefs.forEach(({pAtoms})=>pAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
 
@@ -615,17 +670,19 @@ function bindMolCanvas(pi){
     const sx=canvas.width/rc.width,sy=canvas.height/rc.height;
     const x=(clientX-rc.left)*sx,y=(clientY-rc.top)*sy;
     for(const{pAtoms,sAtoms} of mc.mols){
-      for(const a of pAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'L'};
-      for(const a of sAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'R'};
+      for(const a of pAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'L',wid:a.wid};
+      for(const a of sAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'R',wid:a.wid};
     }
     return null;
   }
   function startDrag(e){
-    e.preventDefault();
     const src=e.touches?e.touches[0]:e;
     const hit=hitAtom(src.clientX,src.clientY);if(!hit)return;
+    e.preventDefault();
+    // 모형에서 원자를 떼어내 손가락에 붙임
+    MC_DRAG[pi]=hit.wid;renderMolCanvas(pi);
     showGhost(A[hit.key],src.clientX,src.clientY);
-    function move(ev){const t=ev.touches?ev.touches[0]:ev;moveGhost(t.clientX,t.clientY);}
+    function move(ev){if(ev.cancelable)ev.preventDefault();const t=ev.touches?ev.touches[0]:ev;moveGhost(t.clientX,t.clientY);}
     function up(ev){
       hideGhost();
       const t=ev.changedTouches?ev.changedTouches[0]:ev;
@@ -634,10 +691,12 @@ function bindMolCanvas(pi){
         const rc=panEl.getBoundingClientRect();
         const PAD=24; // 터치용 히트박스 여유
         if(t.clientX>=rc.left-PAD&&t.clientX<=rc.right+PAD&&t.clientY>=rc.top-PAD&&t.clientY<=rc.bottom+PAD){
-          SC[pi][hit.side].push({key:hit.key,id:`sc${Date.now()}`});
-          updateScale(pi,hit.side);
+          SC[pi][hit.side].push({key:hit.key,id:`sc${Date.now()}`,wid:hit.wid});
+          updateScale(pi,hit.side,true);
         }
       }
+      // 저울에 놓지 못했으면 원자는 다시 모형으로 돌아감
+      MC_DRAG[pi]=null;renderMolCanvas(pi);
       document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
       document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);
     }
@@ -653,7 +712,7 @@ function bindMolCanvas(pi){
 ═══════════════════════════════════════ */
 const SC=new Array(NPANELS).fill(null).map(()=>({L:[],R:[]}));
 
-function updateScale(pi,side){
+function updateScale(pi,side,skipMol){
   const panEl=document.getElementById(`sa${pi}${side}`);
   const valEl=document.getElementById(`sv${pi}${side}`);
   if(!panEl||!valEl)return;
@@ -677,6 +736,8 @@ function updateScale(pi,side){
       panEl.appendChild(d);
     });
   }
+  // 저울에서 내린 원자는 분자 모형으로 되돌아감
+  if(!skipMol) renderMolCanvas(pi);
   // 표 업데이트 (hasTable 패널만)
   if(CFG[pi].hasTable) updateMassTable(pi);
 }
@@ -913,7 +974,7 @@ function buildPanels(){
       <div class="card">
         <div class="ch">저울로 질량 비교하기</div>
         <div style="font-size:12px;font-weight:700;color:#4a5a78;margin-bottom:6px;">📦 만들어진 화합물 — 원자를 드래그하여 저울에 올리세요</div>
-        <div class="mol-canvas-wrap" id="mw${pi}"><canvas id="mc${pi}" style="display:block;width:100%;touch-action:none;cursor:grab;"></canvas></div>
+        <div class="mol-canvas-wrap" id="mw${pi}"><canvas id="mc${pi}"></canvas></div>
         <div class="dual-scale">
           <div class="scale-col">
             <div class="scale-instruct">${cfg.scLabelL}</div>
@@ -946,7 +1007,6 @@ function buildPanels(){
             </div>
           </div>
         </div>
-        <div class="remove-hint">💡 저울 위 원자를 탭하면 다시 내릴 수 있어요</div>
         ${cfg.hasTable ? `
         <div style="margin-top:16px;">
           <div class="mass-table-note">
@@ -1033,7 +1093,7 @@ function switchTab(pi){
   },60);
 }
 
-// 원자 위치는 유지하고 캔버스 크기만 재조정
+// 원자 위치는 유지하고 캔버스 크기만 재조정 (팔레트에 남은 원자는 새 배치로 정렬)
 function resizeWS(pi){
   const s=WS[pi];if(!s)return;
   const wrap=document.getElementById(`ws${pi}`);
@@ -1041,10 +1101,20 @@ function resizeWS(pi){
   if(!wrap||!canvas)return;
   const W=wrap.clientWidth||s.W;
   if(W===s.W){drawWS(pi);return;} // 크기 변화 없으면 그냥 다시 그리기
-  // 캔버스 너비 비율로 원자 x좌표 스케일
-  const ratio=W/s.W;
-  s.atoms.forEach(at=>{at.x=Math.round(at.x*ratio);});
-  s.W=W;canvas.width=W;canvas.style.width='100%';
+  const{PW,slots,H}=paletteLayout(pi,W);
+  const ratio=(W-PW)/(s.W-s.PW);
+  const free=slots.slice();
+  s.atoms.forEach(at=>{
+    if(at.x<=s.PW){
+      const k=free.findIndex(sl=>sl.key===at.key);
+      const sl=free.splice(k,1)[0];at.x=sl.x;at.y=sl.y;
+    } else {
+      at.x=Math.round(PW+(at.x-s.PW)*ratio);
+      at.y=Math.max(at.r,Math.min(H-at.r,at.y));
+    }
+  });
+  s.W=W;s.PW=PW;s.H=H;
+  canvas.width=W;canvas.height=H;canvas.style.width='100%';canvas.style.height=H+'px';
   drawWS(pi);
 }
 
