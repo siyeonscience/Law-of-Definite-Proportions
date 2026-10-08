@@ -475,6 +475,14 @@ function resetWS(pi){
 ═══════════════════════════════════════ */
 const MC=new Array(NPANELS).fill(null).map(()=>({mols:[],cfg:null}));
 const MC_BOUND=new Array(NPANELS).fill(false);
+const MC_DRAG=new Array(NPANELS).fill(null); // 저울로 떼어내는 중인 원자 id
+
+// 저울에 올라갔거나 떼어내는 중인 원자 id (분자 모형에서 숨김)
+function takenIds(pi){
+  const ids=new Set([...SC[pi].L,...SC[pi].R].map(a=>a.wid));
+  if(MC_DRAG[pi])ids.add(MC_DRAG[pi]);
+  return ids;
+}
 
 function renderMolCanvas(pi){
   const canvas=document.getElementById(`mc${pi}`);if(!canvas)return;
@@ -496,6 +504,16 @@ function renderMolCanvas(pi){
   // 충분한 여백 확보: 행 수 × (분자높이 + 간격) + 위아래 여백
   const canH=mol===0?60:ROWS*(molH+GAP)+GAP;
 
+  // 분자가 깨져 더 이상 존재하지 않는 원자는 저울에서도 내림 (드래그 중에는 판단 보류)
+  if(!WS[pi]?.drag){
+    const live=new Set(bonds.flatMap(b=>[...b.pGroup,...b.sGroup].map(a=>a.id)));
+    ['L','R'].forEach(side=>{
+      const before=SC[pi][side].length;
+      SC[pi][side]=SC[pi][side].filter(a=>live.has(a.wid));
+      if(SC[pi][side].length!==before)updateScale(pi,side,true);
+    });
+  }
+
   canvas.width=canW;canvas.height=canH;canvas.style.height=canH+'px';
   const ctx=canvas.getContext('2d');
   ctx.clearRect(0,0,canW,canH);
@@ -508,7 +526,7 @@ function renderMolCanvas(pi){
   }
 
   const molDefs=[];
-  bonds.forEach((_,i)=>{
+  bonds.forEach(({pGroup,sGroup},i)=>{
     const col=i%COLS, row=Math.floor(i/COLS);
     const totalW=COLS*molW+(COLS-1)*GAP;
     const startX=Math.max(0,(canW-totalW)/2);
@@ -516,15 +534,24 @@ function renderMolCanvas(pi){
     // 각 행의 y: 위쪽 여백(GAP/2) + 행번호×(분자높이+간격) + layout.oy
     const oy=GAP/2+row*(molH+GAP)+layout.oy;
     const pAtoms=[], sAtoms=[];
+    // 각 모형 원자를 작업 공간의 실제 원자(id)와 연결
     layout.atoms.forEach(at=>{
-      const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key};
+      const src=at.isPrimary?pGroup[pAtoms.length]:sGroup[sAtoms.length];
+      const entry={x:ox+at.dx, y:oy+at.dy, r:at.r, key:at.key, wid:src.id};
       if(at.isPrimary) pAtoms.push(entry); else sAtoms.push(entry);
     });
     molDefs.push({pAtoms,sAtoms});
   });
 
+  // 저울로 떼어낸 원자는 빼고 그림. 고리는 원자가 모두 남은 분자에만 표시
+  const taken=takenIds(pi);
+  molDefs.forEach(m=>{
+    m.pAtoms=m.pAtoms.filter(a=>!taken.has(a.wid));
+    m.sAtoms=m.sAtoms.filter(a=>!taken.has(a.wid));
+  });
+  const full=layout.atoms.length;
   // ring → secondary → primary 순서
-  molDefs.forEach(({pAtoms,sAtoms})=>drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]));
+  molDefs.forEach(({pAtoms,sAtoms})=>{if(pAtoms.length+sAtoms.length===full)drawRingAroundGroup(ctx,[...pAtoms,...sAtoms]);});
   molDefs.forEach(({sAtoms})=>sAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
   molDefs.forEach(({pAtoms})=>pAtoms.forEach(a=>drawBall(ctx,a.x,a.y,a.r,A[a.key])));
 
@@ -629,8 +656,8 @@ function bindMolCanvas(pi){
     const sx=canvas.width/rc.width,sy=canvas.height/rc.height;
     const x=(clientX-rc.left)*sx,y=(clientY-rc.top)*sy;
     for(const{pAtoms,sAtoms} of mc.mols){
-      for(const a of pAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'L'};
-      for(const a of sAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'R'};
+      for(const a of pAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'L',wid:a.wid};
+      for(const a of sAtoms)if((x-a.x)**2+(y-a.y)**2<=a.r**2)return{key:a.key,side:'R',wid:a.wid};
     }
     return null;
   }
@@ -638,6 +665,8 @@ function bindMolCanvas(pi){
     const src=e.touches?e.touches[0]:e;
     const hit=hitAtom(src.clientX,src.clientY);if(!hit)return;
     e.preventDefault();
+    // 모형에서 원자를 떼어내 손가락에 붙임
+    MC_DRAG[pi]=hit.wid;renderMolCanvas(pi);
     showGhost(A[hit.key],src.clientX,src.clientY);
     function move(ev){if(ev.cancelable)ev.preventDefault();const t=ev.touches?ev.touches[0]:ev;moveGhost(t.clientX,t.clientY);}
     function up(ev){
@@ -648,10 +677,12 @@ function bindMolCanvas(pi){
         const rc=panEl.getBoundingClientRect();
         const PAD=24; // 터치용 히트박스 여유
         if(t.clientX>=rc.left-PAD&&t.clientX<=rc.right+PAD&&t.clientY>=rc.top-PAD&&t.clientY<=rc.bottom+PAD){
-          SC[pi][hit.side].push({key:hit.key,id:`sc${Date.now()}`});
-          updateScale(pi,hit.side);
+          SC[pi][hit.side].push({key:hit.key,id:`sc${Date.now()}`,wid:hit.wid});
+          updateScale(pi,hit.side,true);
         }
       }
+      // 저울에 놓지 못했으면 원자는 다시 모형으로 돌아감
+      MC_DRAG[pi]=null;renderMolCanvas(pi);
       document.removeEventListener('mousemove',move);document.removeEventListener('mouseup',up);
       document.removeEventListener('touchmove',move);document.removeEventListener('touchend',up);
     }
@@ -667,7 +698,7 @@ function bindMolCanvas(pi){
 ═══════════════════════════════════════ */
 const SC=new Array(NPANELS).fill(null).map(()=>({L:[],R:[]}));
 
-function updateScale(pi,side){
+function updateScale(pi,side,skipMol){
   const panEl=document.getElementById(`sa${pi}${side}`);
   const valEl=document.getElementById(`sv${pi}${side}`);
   if(!panEl||!valEl)return;
@@ -691,6 +722,8 @@ function updateScale(pi,side){
       panEl.appendChild(d);
     });
   }
+  // 저울에서 내린 원자는 분자 모형으로 되돌아감
+  if(!skipMol) renderMolCanvas(pi);
   // 표 업데이트 (hasTable 패널만)
   if(CFG[pi].hasTable) updateMassTable(pi);
 }
@@ -960,7 +993,7 @@ function buildPanels(){
             </div>
           </div>
         </div>
-        <div class="remove-hint">💡 저울 위 원자를 탭하면 다시 내릴 수 있어요</div>
+        <div class="remove-hint">💡 저울 위 원자를 탭하면 분자 모형으로 다시 돌아가요</div>
         ${cfg.hasTable ? `
         <div style="margin-top:16px;">
           <div class="mass-table-note">
