@@ -803,7 +803,7 @@ function updateMassTable(pi){
   // 저울에 원자가 아예 없으면 표 안 채움
   if(massL===0 && massR===0) return;
 
-  for(let n=1;n<=4;n++){
+  for(let n=1;n<=maxMols(pi);n++){
     // 분자 n개일 때 각 원소의 이론적 질량 합계
     const theorL=n*pp*m1;
     const theorR=n*sp*m2;
@@ -915,6 +915,72 @@ function bindTag(pi,tagId,label){
 /* ═══════════════════════════════════════
    SUMMARY CHECK
 ═══════════════════════════════════════ */
+function checkAll(pi){
+  const cfg=CFG[pi];
+  const fb=document.getElementById(`rf${pi}`);
+  const bonds=findBonds(pi);
+  const mol=bonds.length;
+  if(mol===0){fb.className='rfb no';fb.textContent='⚠️ 위에서 화합물을 먼저 만들어 주세요!';return;}
+
+  const m1=A[cfg.primary].mass,  m2=A[cfg.secondary].mass;  // 원자 1개 질량
+  const pp=cfg.perMol.p, sp=cfg.perMol.s;
+  const totalN1=mol*pp, totalN2=mol*sp;                      // 전체 원자 개수
+  const g=gcd(m1*pp, m2*sp), rr1=(m1*pp)/g, rr2=(m2*sp)/g;  // 질량비
+
+  // 정리 1번: 원자 1개 질량
+  const ma =parseInt(document.getElementById(`s${pi}ma`)?.value)||0;
+  const oa =parseInt(document.getElementById(`s${pi}oa`)?.value)||0;
+  // 정리 2번: 화합물 속 원자 개수 (완성된 분자 기준 총 개수)
+  const mc2=parseInt(document.getElementById(`s${pi}mc`)?.value)||0;
+  const oc =parseInt(document.getElementById(`s${pi}oc`)?.value)||0;
+  // 정리 3번: 질량비
+  const ra =parseInt(document.getElementById(`r${pi}a`)?.value)||0;
+  const rb =parseInt(document.getElementById(`r${pi}b`)?.value)||0;
+
+  const massOk =(ma===m1)&&(oa===m2);
+  const countOk=(mc2===pp)&&(oc===sp);  // 분자 1개 기준
+  const ratioOk=ra>0&&rb>0&&ra*rr2===rb*rr1;
+
+  let msgs=[];
+  if(!massOk) msgs.push(`원자 1개 질량: ${A[cfg.primary].name} ${m1}g, ${A[cfg.secondary].name} ${m2}g`);
+  if(!countOk)msgs.push(`분자 1개당 원자 수: ${A[cfg.primary].name} ${pp}개, ${A[cfg.secondary].name} ${sp}개`);
+  if(!ratioOk)msgs.push(`질량비: ${rr1} : ${rr2}`);
+
+  if(!msgs.length){fb.className='rfb ok';fb.textContent=`✅ 모두 정답! 질량비 = ${rr1} : ${rr2}`;}
+  else{fb.className='rfb no';fb.textContent='❌ 틀린 항목: '+msgs.join(' / ');}
+}
+
+/* 저울 아래 질량 표: 주어진 원자로 만들 수 있는 분자 수까지는 저울 측정값으로 자동 기록,
+   그보다 많은 분자 수 칸은 학생이 계산해서 입력 */
+function maxMols(pi){
+  const cfg=CFG[pi];
+  return Math.min(Math.floor(cfg.n1/cfg.perMol.p),Math.floor(cfg.n2/cfg.perMol.s));
+}
+function autoCell(pi,n,row){
+  if(n<=maxMols(pi))return `<td id="mt${pi}_${row}${n}"${row==='ratio'?' class="ratio-filled"':''}></td>`;
+  const inp=id=>`<input class="tin" id="mtc${pi}_${id}" type="text" inputmode="numeric" autocomplete="off">`;
+  if(row==='ratio')return `<td><span class="tratio">${inp('ra'+n)}<span class="ratio-colon">:</span>${inp('rb'+n)}</span></td>`;
+  return `<td>${inp(row+n)}</td>`;
+}
+function checkAutoCalc(pi){
+  const cfg=CFG[pi];
+  const u1=cfg.perMol.p*A[cfg.primary].mass, u2=cfg.perMol.s*A[cfg.secondary].mass;
+  const el=id=>document.getElementById(`mtc${pi}_${id}`);
+  const num=id=>{const v=(el(id).value||'').trim();return /^\d+(\.\d+)?$/.test(v)?parseFloat(v):NaN;};
+  const mark=(id,ok)=>{el(id).classList.remove('ok','no');el(id).classList.add(ok?'ok':'no');return ok;};
+  let wrong=0,empty=0;
+  for(let n=maxMols(pi)+1;n<=4;n++){
+    ['L'+n,'R'+n,'ra'+n,'rb'+n].forEach(id=>{if(!(el(id).value||'').trim())empty++;});
+    if(!mark('L'+n,num('L'+n)===n*u1))wrong++;
+    if(!mark('R'+n,num('R'+n)===n*u2))wrong++;
+    const a=num('ra'+n),b=num('rb'+n),ok=a>0&&b>0&&Math.abs(a*u2-b*u1)<1e-9;
+    mark('ra'+n,ok);mark('rb'+n,ok);if(!ok)wrong++;
+  }
+  const fb=document.getElementById(`mtc${pi}_msg`);
+  if(!wrong){fb.className='rfb ok';fb.textContent='✅ 모두 정답입니다!';}
+  else{fb.className='rfb no';fb.textContent=empty?'⚠️ 빈칸을 모두 채워 보세요.':'❌ 빨간 칸을 다시 확인해 보세요.';}
+}
+
 /* 학생이 직접 채우는 표 (kind: 'c' 원자 수 / 'm' 질량)
    분자 수 1~4개 열 + 비 + 결론 문장 */
 function unitNames(pi){
@@ -936,7 +1002,7 @@ function studentTableHTML(pi,kind){
   return `
         <div style="overflow-x:auto;">
           <table class="mass-table ws-table">
-            <thead><tr><th colspan="2">${head}</th>${cols.map(n=>`<th>${n}개</th>`).join('')}</tr></thead>
+            <thead><tr><th colspan="2">${head}</th>${cols.map(n=>`<th style="width:15%">${n}개</th>`).join('')}</tr></thead>
             <tbody>
               <tr><td class="row-label-group" rowspan="2">구성 원자</td><td class="row-header">${r1}</td>${cols.map(n=>`<td>${inp('p'+n)}</td>`).join('')}</tr>
               <tr><td class="row-header">${r2}</td>${cols.map(n=>`<td>${inp('s'+n)}</td>`).join('')}</tr>
@@ -1051,10 +1117,10 @@ function buildPanels(){
           <span class="tag" id="tg${pi}b" style="background:${cfg.tagColors[1]};">${pn2}</span>
         </div>
         <div style="font-size:11px;color:#b0bcc8;margin-top:6px;">위의 태그를 빈칸으로 드래그하세요</div>
-        <div style="margin-top:20px;border-top:1.5px dashed #d4dae8;padding-top:16px;">
+        ${cfg.hasTable?`<div style="margin-top:20px;border-top:1.5px dashed #d4dae8;padding-top:16px;">
           <div class="ws-q">${cfg.molName?`${cfg.molName} 모형`:`${cfg.cname} 모형`}의 수가 1개, 2개, 3개, 4개일 때 ${josa(unitNames(pi).unit,'을','를')} 구성하는 ${pn1} 원자와 ${pn2} 원자 수를 세어 보자.</div>
           ${studentTableHTML(pi,'c')}
-        </div>
+        </div>`:''}
       </div>
 
       <!-- 저울 -->
@@ -1104,36 +1170,72 @@ function buildPanels(){
               <thead>
                 <tr>
                   <th colspan="2">${cfg.molName} 수</th>
-                  <th>1개</th><th>2개</th><th>3개</th><th>4개</th>
+                  ${[1,2,3,4].map(n=>`<th style="width:15%">${n}개</th>`).join("")}
                 </tr>
               </thead>
               <tbody>
                 <tr>
                   <td class="row-label-group" rowspan="2">구성 원자</td>
                   <td class="row-header">${pn1} 질량 합계 (g)</td>
-                  <td id="mt${pi}_L1"></td><td id="mt${pi}_L2"></td><td id="mt${pi}_L3"></td><td id="mt${pi}_L4"></td>
+                  ${[1,2,3,4].map(n=>autoCell(pi,n,'L')).join('')}
                 </tr>
                 <tr>
                   <td class="row-header">${pn2} 질량 합계 (g)</td>
-                  <td id="mt${pi}_R1"></td><td id="mt${pi}_R2"></td><td id="mt${pi}_R3"></td><td id="mt${pi}_R4"></td>
+                  ${[1,2,3,4].map(n=>autoCell(pi,n,'R')).join('')}
                 </tr>
                 <tr>
                   <td colspan="2" class="row-header">질량 비 (${pn1} : ${pn2})</td>
-                  <td id="mt${pi}_ratio1" class="ratio-filled"></td><td id="mt${pi}_ratio2" class="ratio-filled"></td><td id="mt${pi}_ratio3" class="ratio-filled"></td><td id="mt${pi}_ratio4" class="ratio-filled"></td>
+                  ${[1,2,3,4].map(n=>autoCell(pi,n,'ratio')).join('')}
                 </tr>
               </tbody>
             </table>
           </div>
+          ${maxMols(pi)<4?`
+          <div class="mass-table-note" style="margin-top:10px;">✏️ 원자가 모자라 ${maxMols(pi)+1}개 이상은 저울로 잴 수 없어요. ${maxMols(pi)+1}~4개 칸은 계산해서 채워 보세요.</div>
+          <div class="rfb" id="mtc${pi}_msg"></div>
+          <button class="btn-check" onclick="checkAutoCalc(${pi})">확인</button>`:''}
         </div>` : ''}
       </div>
 
       <!-- 정리 -->
+      ${cfg.hasTable?`
       <div class="card">
         <div class="ch">정리</div>
         <div class="ws-q">${josa(cfg.cname,'을','를')} 이루는 ${josa(pn1,'과','와')} ${josa(pn2,'을','를')} 각각 저울에 올려서 질량을 비교해 보자.<br>
           ${cfg.molName?`${cfg.molName} 모형`:`${cfg.cname} 모형`}의 수가 1개, 2개, 3개, 4개일 때 ${josa(unitNames(pi).unit,'을','를')} 구성하는 ${josa(pn1,'과','와')} ${pn2}의 질량을 계산해 보자.</div>
         ${studentTableHTML(pi,'m')}
       </div>
+`:`
+      <div class="card">
+        <div class="ch">정리</div>
+        <ul class="sum-list">
+          <li>
+            <span>${pn1} 원자 1개의 질량은</span>
+            <input class="bn" id="s${pi}ma" type="text" inputmode="numeric" placeholder="?">
+            <span>g, ${pn2} 원자 1개의 질량은</span>
+            <input class="bn" id="s${pi}oa" type="text" inputmode="numeric" placeholder="?">
+            <span>g</span>
+          </li>
+          <li>
+            <span>${cfg.cname} 1개를 이루는 ${pn1} 원자의 개수는</span>
+            <input class="bn" id="s${pi}mc" type="text" inputmode="numeric" placeholder="?">
+            <span>개, ${pn2} 원자의 개수는</span>
+            <input class="bn" id="s${pi}oc" type="text" inputmode="numeric" placeholder="?">
+            <span>개</span>
+          </li>
+          <li>
+            <span>${cfg.cname}을(를) 이루는 ${pn1}과 ${pn2}의 질량비는</span>
+            <div class="ratio-wrap">
+              <input class="bn" id="r${pi}a" type="text" inputmode="numeric" placeholder="?">
+              <span class="ratio-colon"> : </span>
+              <input class="bn" id="r${pi}b" type="text" inputmode="numeric" placeholder="?">
+            </div>
+          </li>
+        </ul>
+        <div class="rfb" id="rf${pi}"></div>
+        <button class="btn-check" onclick="checkAll(${pi})">확인</button>
+      </div>
+`}
     `;
     container.appendChild(panel);
   });
