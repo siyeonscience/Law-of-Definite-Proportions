@@ -835,7 +835,20 @@ function bindQuiz(pi){
   const inp=document.getElementById(`qi${pi}`),fb=document.getElementById(`qf${pi}`);
   if(!inp)return;
   const ans=CFG[pi].formula.replace('₂','2').replace('₃','3'); // 입력은 ASCII
-  inp.addEventListener('input',()=>{
+  inp.addEventListener('input',e=>{
+    // 원소기호·괄호 뒤에 오는 숫자는 아래 첨자로 바꿔 표시 (예: H2O → H₂O)
+    if(!e.isComposing){
+      let out='',prev='';
+      for(const ch of inp.value){
+        out+=(/[0-9]/.test(ch)&&/[A-Za-z)₀-₉]/.test(prev))?String.fromCharCode(8320+Number(ch)):ch;
+        prev=out.slice(-1);
+      }
+      if(out!==inp.value){
+        const pos=inp.selectionStart; // 글자 수는 그대로라 커서 위치 유지
+        inp.value=out;
+        try{inp.setSelectionRange(pos,pos);}catch(_){}
+      }
+    }
     const v=inp.value.trim();
     if(!v){inp.className='fi';fb.textContent='';return;}
     // 정답 비교: 첨자 무시
