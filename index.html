@@ -12,8 +12,14 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 .screen.on{display:flex;}
 
 /* SPLASH */
-#splash{align-items:center;justify-content:center;
+#splash{align-items:center;justify-content:flex-start;overflow-y:auto;
   background:radial-gradient(ellipse at 50% 40%,#1e2d4a 0%,#0d1220 100%);}
+.sp-inner{margin:auto;padding:32px 20px;text-align:center;max-width:560px;}
+.btn-new{display:block;margin:14px auto 0;background:none;border:none;color:#7a90bb;
+  font-size:12.5px;text-decoration:underline;cursor:pointer;}
+.privacy{margin-top:36px;padding:14px 16px;border-top:1px solid #2c3a58;text-align:left;
+  font-size:11.5px;line-height:1.7;color:#8a9bbf;word-break:keep-all;}
+.privacy p+p{margin-top:8px;}
 .sp-icon{font-size:72px;animation:bob 3s ease-in-out infinite;display:block;text-align:center;margin-bottom:16px;}
 @keyframes bob{0%,100%{transform:translateY(0);}50%{transform:translateY(-12px);}}
 .sp-title{font-size:clamp(17px,4vw,24px);font-weight:900;color:#fff;text-align:center;line-height:1.38;margin-bottom:6px;}
@@ -128,11 +134,17 @@ html,body{height:100%;overflow:hidden;background:#1a1f2e;color:#f0f2f8;
 
 <!-- SPLASH -->
 <div class="screen on" id="splash">
-  <div style="padding:32px;text-align:center;">
+  <div class="sp-inner">
     <span class="sp-icon">⚗️</span>
     <div class="sp-title">일정 성분비 법칙<br>원자 모형으로 설명하기</div>
     <div class="sp-sub">원자를 직접 드래그해서 화합물을 만들어 보세요</div>
     <button class="btn-go" id="startBtn">시 작</button>
+    <button class="btn-new" id="newBtn" style="display:none;">처음부터 새로 시작</button>
+    <div class="privacy">
+      <p>본 서비스는 개인정보 처리에 관한 업무를 총괄해서 책임지고, 개인정보 처리와 관련한 정보주체의 불만처리 및 피해구제 등을 위하여 아래와 같이 개인정보 보호책임자를 지정하고 있습니다.</p>
+      <p>성명: 김시연 / 소속: 봉원중학교 / 직위: 교사<br>
+      연락처: 02-879-1543 (※ 개인정보보호를 위해 교사의 개인 휴대전화 번호는 기재하지 않습니다.)</p>
+    </div>
   </div>
 </div>
 
@@ -397,6 +409,17 @@ function initWS(pi){
     const i=cnt[sl.key]=(cnt[sl.key]||0)+1;
     return{key:sl.key,x:sl.x,y:sl.y,r:A[sl.key].r,id:`${pi}-${sl.key}-${i-1}`,dragging:false};
   });
+  // 저장된 원자 위치가 있으면 현재 화면 크기에 맞춰 복원
+  const sv=PENDING_WS[pi];PENDING_WS[pi]=null;
+  if(sv){
+    const ratio=(W-PW)/Math.max(1,sv.W-sv.PW);
+    atoms.forEach(at=>{
+      const p=sv.atoms[at.id];
+      if(!p||p.x<=sv.PW)return; // 팔레트에 있던 원자는 새 팔레트 자리 그대로
+      at.x=Math.round(PW+(p.x-sv.PW)*ratio);
+      at.y=Math.max(at.r,Math.min(H-at.r,p.y));
+    });
+  }
   WS[pi]={atoms,drag:null,W,H,PW,pi};
   bindWS(pi);drawWS(pi);
 }
@@ -424,6 +447,7 @@ function drawWS(pi){
   s.atoms.forEach(at=>{if(!at.dragging)drawBall(ctx,at.x,at.y,at.r,A[at.key]);});
   if(s.drag)drawBall(ctx,s.drag.x,s.drag.y,s.drag.r*1.06,A[s.drag.key]);
   updateWSStatus(pi);
+  if(!s.drag)scheduleSave();
   renderMolCanvas(pi);
 }
 
@@ -477,7 +501,7 @@ function updateWSStatus(pi){
 }
 
 function resetWS(pi){
-  WS[pi]=null;MOLS[pi]=[];SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
+  WS[pi]=null;PENDING_WS[pi]=null;MOLS[pi]=[];SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
 }
 
 /* ═══════════════════════════════════════
@@ -740,6 +764,7 @@ function updateScale(pi,side,skipMol){
   if(!skipMol) renderMolCanvas(pi);
   // 표 업데이트 (hasTable 패널만)
   if(CFG[pi].hasTable) updateMassTable(pi);
+  scheduleSave();
 }
 
 /* 질량 표 업데이트
@@ -828,6 +853,7 @@ function bindTag(pi,tagId,label){
     if(val===targetDZ.dataset.answer){
       targetDZ.textContent=val;targetDZ.className='dz correct';
       targetDZ.dataset.currentVal=val;if(targetFB)targetFB.textContent='';
+      scheduleSave();
     } else {
       targetDZ.className='dz wrong';targetDZ.textContent='원소 이름';
       if(targetFB)targetFB.textContent='⚠️ 원자 모형을 다시 살펴보세요.';
@@ -1082,6 +1108,7 @@ function switchTab(pi){
   document.querySelectorAll('.panel').forEach((p,i)=>p.classList.toggle('on',i===pi));
   document.querySelectorAll('.tb').forEach((b,i)=>b.classList.toggle('on',i===pi));
   document.getElementById('scroll').scrollTop=0;
+  CUR_TAB=pi;scheduleSave();
   setTimeout(()=>{
     // 처음 방문하는 패널만 initWS, 이미 있으면 캔버스 크기만 맞추고 다시 그리기
     if(!WS[pi]){
@@ -1118,10 +1145,82 @@ function resizeWS(pi){
   drawWS(pi);
 }
 
-document.getElementById('startBtn').addEventListener('click',()=>{
+/* ═══════════════════════════════════════
+   SAVE / RESTORE
+   태블릿에서 앱이 꺼졌다가 다시 접속해도 이어서 할 수 있도록
+   진행 상황을 이 기기의 브라우저(localStorage)에만 저장
+═══════════════════════════════════════ */
+const SAVE_KEY='ldp-v2-progress';
+const PENDING_WS=new Array(NPANELS).fill(null);
+let CUR_TAB=0, SAVE_READY=false, saveTimer=null;
+
+function loadSaved(){
+  try{
+    const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null');
+    return d&&d.v===1?d:null;
+  }catch(e){return null;}
+}
+function clearSaved(){try{localStorage.removeItem(SAVE_KEY);}catch(e){}}
+
+function collectState(){
+  const st={v:1,tab:CUR_TAB,scroll:document.getElementById('scroll').scrollTop,
+    inputs:{},dz:{},table:{},ws:[],mols:MOLS,sc:SC};
+  document.querySelectorAll('#panels input[id]').forEach(el=>{if(el.value)st.inputs[el.id]=el.value;});
+  document.querySelectorAll('#panels .dz[id]').forEach(el=>{if(el.dataset.currentVal)st.dz[el.id]=el.dataset.currentVal;});
+  document.querySelectorAll('#panels td[id^="mt"]').forEach(el=>{if(el.textContent)st.table[el.id]=el.textContent;});
+  for(let pi=0;pi<NPANELS;pi++){
+    const s=WS[pi];
+    if(s){
+      const atoms={};s.atoms.forEach(a=>{atoms[a.id]={x:a.x,y:a.y};});
+      st.ws[pi]={W:s.W,PW:s.PW,atoms};
+    } else st.ws[pi]=PENDING_WS[pi]; // 아직 열지 않은 탭은 저장본 유지
+  }
+  return st;
+}
+function saveNow(){
+  if(!SAVE_READY)return;
+  clearTimeout(saveTimer);saveTimer=null;
+  try{localStorage.setItem(SAVE_KEY,JSON.stringify(collectState()));}catch(e){}
+}
+function scheduleSave(){
+  if(!SAVE_READY)return;
+  clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,300);
+}
+// 앱 전환·화면 꺼짐·새로고침 직전에 바로 저장
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveNow();});
+window.addEventListener('pagehide',saveNow);
+document.addEventListener('input',e=>{if(e.target.closest&&e.target.closest('#panels'))scheduleSave();});
+document.getElementById('scroll').addEventListener('scroll',scheduleSave,{passive:true});
+
+function restoreState(d){
+  Object.entries(d.inputs||{}).forEach(([id,v])=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));
+  });
+  Object.entries(d.dz||{}).forEach(([id,v])=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.textContent=v;el.className='dz correct';el.dataset.currentVal=v;
+  });
+  for(let pi=0;pi<NPANELS;pi++){updateScale(pi,'L',true);updateScale(pi,'R',true);}
+  Object.entries(d.table||{}).forEach(([id,v])=>{
+    const el=document.getElementById(id);if(!el)return;
+    el.textContent=v;if(!id.includes('_ratio'))el.className='filled';
+  });
+}
+
+function startApp(saved){
   document.getElementById('splash').classList.remove('on');
   document.getElementById('main').classList.add('on');
   buildPanels();
+  if(saved){
+    try{
+      for(let pi=0;pi<NPANELS;pi++){
+        PENDING_WS[pi]=saved.ws?.[pi]||null;
+        if(Array.isArray(saved.mols?.[pi]))MOLS[pi]=saved.mols[pi];
+        if(saved.sc?.[pi])SC[pi]={L:saved.sc[pi].L||[],R:saved.sc[pi].R||[]};
+      }
+    }catch(e){saved=null;}
+  }
   setTimeout(()=>{
     initWS(0);renderMolCanvas(0);
     CFG.forEach((cfg,pi)=>{
@@ -1129,7 +1228,24 @@ document.getElementById('startBtn').addEventListener('click',()=>{
       bindTag(pi,`tg${pi}a`,A[cfg.primary].name);
       bindTag(pi,`tg${pi}b`,A[cfg.secondary].name);
     });
+    if(saved){
+      try{restoreState(saved);}catch(e){}
+      const tab=Math.min(NPANELS-1,Math.max(0,saved.tab|0));
+      if(tab!==0)switchTab(tab);
+      setTimeout(()=>{document.getElementById('scroll').scrollTop=saved.scroll||0;SAVE_READY=true;saveNow();},200);
+    } else {SAVE_READY=true;saveNow();}
   },80);
+}
+
+const SAVED=loadSaved();
+if(SAVED){
+  document.getElementById('startBtn').textContent='이어서 하기';
+  document.getElementById('newBtn').style.display='block';
+}
+document.getElementById('startBtn').addEventListener('click',()=>startApp(SAVED));
+document.getElementById('newBtn').addEventListener('click',()=>{
+  if(!confirm('저장된 내용을 지우고 처음부터 새로 시작할까요?'))return;
+  clearSaved();startApp(null);
 });
 
 window.addEventListener('resize',()=>{
