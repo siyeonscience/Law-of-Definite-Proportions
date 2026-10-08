@@ -477,7 +477,7 @@ function updateWSStatus(pi){
 }
 
 function resetWS(pi){
-  SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
+  WS[pi]=null;MOLS[pi]=[];SC[pi]={L:[],R:[]};updateScale(pi,'L');updateScale(pi,'R');initWS(pi);
 }
 
 /* ═══════════════════════════════════════
@@ -486,6 +486,19 @@ function resetWS(pi){
 const MC=new Array(NPANELS).fill(null).map(()=>({mols:[],cfg:null}));
 const MC_BOUND=new Array(NPANELS).fill(false);
 const MC_DRAG=new Array(NPANELS).fill(null); // 저울로 떼어내는 중인 원자 id
+// 분자 모형 목록: 작업 공간에서 한 번 완성된 분자는 이후 작업 공간과 별개로 계속 남음
+const MOLS=new Array(NPANELS).fill(null).map(()=>[]);
+
+function syncMols(pi){
+  if(!WS[pi]||WS[pi].drag)return; // 드래그 중에는 판단 보류
+  const used=new Set(MOLS[pi].flatMap(m=>[...m.pGroup,...m.sGroup].map(a=>a.id)));
+  findBonds(pi).forEach(({pGroup,sGroup})=>{
+    const ids=[...pGroup,...sGroup].map(a=>a.id);
+    if(ids.some(id=>used.has(id)))return; // 이미 모형으로 만든 원자가 섞여 있으면 새로 추가하지 않음
+    ids.forEach(id=>used.add(id));
+    MOLS[pi].push({pGroup:pGroup.map(a=>({id:a.id})),sGroup:sGroup.map(a=>({id:a.id}))});
+  });
+}
 
 // 저울에 올라갔거나 떼어내는 중인 원자 id (분자 모형에서 숨김)
 function takenIds(pi){
@@ -497,7 +510,8 @@ function takenIds(pi){
 function renderMolCanvas(pi){
   const canvas=document.getElementById(`mc${pi}`);if(!canvas)return;
   const cfg=CFG[pi];
-  const bonds=findBonds(pi);
+  syncMols(pi);
+  const bonds=MOLS[pi];
   const mol=bonds.length;
 
   const wrap=canvas.parentElement;
